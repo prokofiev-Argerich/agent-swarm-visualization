@@ -67,6 +67,14 @@ bun dev
 
 直接跟他说"创建 3 个儿子，给他们分别发消息，让他们再次自己创建 3 个孙子"
 
+### 验证后端 API
+开发期可用 smoke test 快速确认所有路由都已注册:
+```
+npm run smoke:api
+# 或 bun run smoke:api
+```
+脚本会 ping 所有已知端点,区分 Next.js HTML 404(路由未注册)和 handler JSON 404(资源不存在,路由正常)。前者会让 smoke test 失败,后者会通过。
+
 ### MCP 配置
 后端会自动加载 MCP 配置文件，支持以下位置（按优先级）：  
 1) `MCP_CONFIG_PATH` 指定的文件  

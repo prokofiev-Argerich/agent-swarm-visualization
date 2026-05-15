@@ -1,6 +1,27 @@
 # Swarm-IDE 代码库审查报告
 
 > 基于 2026-05-15 代码状态的全面梳理与优化建议。
+>
+> **进度更新（2026-05-15 ship 后）**：本文档中识别出的 14 个问题,大部分已通过 WORK_LOG 中的阶段 0-5 重构落地。当前状态:
+>
+> | 项 | 状态 | 落地于 |
+> |---|---|---|
+> | #1 拆分 storage.ts | ✅ 已完成 | 阶段 2 |
+> | #2 Zod 验证 + 统一错误处理 | 🟡 部分 (files API) | 待完成:推广到所有 API |
+> | #3 拆分 im/page.tsx | 🟡 部分 (FilePanel/Composer) | 阶段 3 |
+> | #4 Drizzle migration | ✅ 已完成 | 阶段 1 |
+> | #5 SSE 封装提取 | ✅ 已完成 | 阶段 0 (`lib/sse.ts`) |
+> | #6 file-service 拆出 | ✅ 已完成 | 阶段 0 |
+> | #7 SESSION_KEY 常量化 | ✅ 已完成 | 阶段 0 (`lib/constants.ts`) |
+> | #8 LLM Provider 抽象 | 🟡 部分 (StreamAssembler 统一) | 阶段 4 |
+> | #9 config.ts 扩展 | ⬜ 未做 | — |
+> | #10 EventChannel 抽象 | ⬜ 未做 | — |
+> | #11 agent-logger 结构化 | ⬜ 未做 | — |
+> | #12 frontmatter 库 | ⬜ 未做 | — |
+> | #13 withSchemaRetry 推广 | ⬜ 未做 | — |
+> | #14 monorepo | ⬜ 未做 | — |
+>
+> **本文档仍作为长期债务清单使用**,新增条目优先记录到 WORK_LOG 的「未完成项」。
 
 ---
 

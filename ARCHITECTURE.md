@@ -17,7 +17,7 @@
 
 ---
 
-## 二、数据库层（5 张表）
+## 二、数据库层（6 张表）
 
 **文件：** `backend/src/db/schema.ts`
 
@@ -28,6 +28,7 @@
 | `groups` | 聊天群组，P2P/多人群组 |
 | `group_members` | 群组成员 + `lastReadMessageId`（联合主键） |
 | `messages` | 消息，`contentType` 支持扩展 |
+| `files` | 上传文件（workspace_id 外键 CASCADE） |
 
 外键关系：
 - `agents.workspaceId` -> `workspaces.id`
@@ -35,6 +36,9 @@
 - `group_members.groupId` -> `groups.id`
 - `messages.workspaceId` -> `workspaces.id`
 - `messages.groupId` -> `groups.id`
+- `files.workspaceId` -> `workspaces.id` (CASCADE)
+
+**Schema 演进**：使用 Drizzle migration（`drizzle-kit generate` 生成 `backend/src/db/migrations/*.sql`，运行时由 `ensureSchema()` 调用 `migrate()` 应用）。Drizzle 自动用 `drizzle.__drizzle_migrations` 表跟踪状态。
 
 ---
 
@@ -116,10 +120,12 @@ start()
 
 | 通道 | 用途 | 文件 |
 |---|---|---|
-| `/api/agents/[id]/context-stream` | Agent 内部事件流（reasoning、content、tool calls） | `backend/app/api/agents/[agentId]/context-stream/route.ts` |
+| `/api/agent-context-stream?agentId=...`(扁平,前端首选) <br/> `/api/agents/[id]/context-stream`(嵌套兼容) | Agent 内部事件流（reasoning、content、tool calls） | `backend/app/api/agent-context-stream/route.ts` + `backend/app/api/agents/[agentId]/context-stream/route.ts`(均 delegate 到 `src/server/handlers/agent-context-stream.ts`) |
 | `/api/ui-stream` | Workspace UI 事件流（agent 创建、消息、工具可视化） | `backend/app/api/ui-stream/route.ts` |
 
-前端通过两个独立的 EventSource 同时订阅这两个通道，实现实时更新。
+前端通过两个独立的 EventSource 同时订阅这两个通道,实现实时更新。
+
+> **API facade 模式**：Next.js 16 + Turbopack 在 dev mode 下,嵌套动态路由(`[id]/sub/`)首次请求会间歇性 404。为此每个嵌套路由都搭配一个扁平别名,二者复用同一个 `src/server/handlers/*.ts`。客户端经 `src/lib/api-paths.ts` 统一走扁平路由,production 不受影响。涉及路由:`workspace-defaults`、`agent-context-stream`、`group-messages`。
 
 ---
 
@@ -271,7 +277,7 @@ If you need to run shell commands, use the bash tool.
 
 ### 10.2 初始 History 模板
 
-**文件：** `backend/src/lib/storage.ts` 中的 `initialAgentHistory()`
+**文件：** `backend/src/lib/storage/shared.ts` 中的 `initialAgentHistory()`(从 `storage/index.ts` 导出)
 
 ```typescript
 [
@@ -357,18 +363,52 @@ Agent 收到的用户消息格式：
 
 ## 十二、关键文件索引
 
+### 后端核心
+
 | 文件 | 用途 |
 |---|---|
 | `backend/src/db/schema.ts` | 数据库表定义 |
-| `backend/src/db/init.ts` | 数据库初始化（CREATE TABLE） |
-| `backend/src/lib/storage.ts` | 所有数据库操作 |
+| `backend/src/db/init.ts` | `ensureSchema()` — 调用 Drizzle migrate() |
+| `backend/src/db/migrate.ts` | Drizzle migrator 封装 |
+| `backend/src/db/migrations/0000_init.sql` | 初始 schema 迁移(6 张表 + 外键) |
+| `backend/src/lib/storage/index.ts` | 组装 `store` 对象 |
+| `backend/src/lib/storage/{workspaces,agents,groups,messages,files}.ts` | 按领域拆分的 CRUD |
+| `backend/src/lib/storage/shared.ts` | `withSchemaRetry` / `uuid` / `now` / `initialAgentHistory` |
+| `backend/src/lib/file-service.ts` | 上传目录文件系统操作 |
+| `backend/src/lib/api-paths.ts` | 客户端 API 路由常量(扁平路由优先) |
+| `backend/src/lib/llm/*` | 统一 LLM StreamAssembler / SSE 解析 |
+| `backend/src/server/handlers/*.ts` | 路由共享 handler(workspace-defaults、agent-context-stream、group-messages) |
 | `backend/src/runtime/agent-runtime.ts` | Agent 运行时核心 |
 | `backend/src/runtime/event-bus.ts` | Agent 内部事件总线 |
 | `backend/src/runtime/ui-bus.ts` | Workspace UI 事件总线 |
 | `backend/src/runtime/skill-loader.ts` | Skill 发现与加载 |
 | `backend/src/runtime/mcp.ts` | MCP 外部工具 |
+
+### API 路由(部分)
+
+| 文件 | 用途 |
+|---|---|
 | `backend/app/api/glm/stream/route.ts` | LLM 流式调用 API |
-| `backend/app/api/agents/[agentId]/context-stream/route.ts` | Agent SSE 通道 |
+| `backend/app/api/workspace-defaults/route.ts` | 扁平别名(前端首选) |
+| `backend/app/api/agent-context-stream/route.ts` | 扁平 SSE 别名 |
+| `backend/app/api/group-messages/route.ts` | 扁平消息别名 |
+| `backend/app/api/workspaces/[workspaceId]/defaults/route.ts` | 嵌套兼容路由 |
+| `backend/app/api/agents/[agentId]/context-stream/route.ts` | 嵌套兼容 SSE |
+| `backend/app/api/groups/[groupId]/messages/route.ts` | 嵌套兼容消息 |
 | `backend/app/api/ui-stream/route.ts` | UI SSE 通道 |
-| `backend/app/im/page.tsx` | 前端 IM 主界面 |
+
+### 前端
+
+| 文件 | 用途 |
+|---|---|
+| `backend/app/im/page.tsx` | 前端 IM 主界面(经 `apiPaths` 走扁平路由) |
+| `backend/app/im/components/{FilePanel,Composer}.tsx` | IM 子组件 |
 | `backend/app/globals.css` | 全局样式 |
+
+### 验证 & 配置
+
+| 文件 | 用途 |
+|---|---|
+| `backend/scripts/smoke-api.mjs` | API smoke test(`npm run smoke:api`,区分 Next.js HTML 404 vs handler JSON 404) |
+| `backend/eslint.config.mjs` | ESLint v9 flat config |
+| `backend/tsconfig.json` | 含 `@/server/*` 别名 |
