@@ -1257,15 +1257,6 @@ export const store = {
       await tx.delete(workspaces).where(eq(workspaces.id, input.workspaceId));
     });
 
-    // Clean up uploaded files directory
-    try {
-      const { promises: fs } = await import("node:fs");
-      const path = await import("node:path");
-      const uploadDir = path.default.join(process.cwd(), "data", "uploads", input.workspaceId);
-      await fs.rm(uploadDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
-    }
   },
 
   async createFile(input: { id: UUID; workspaceId: UUID; filename: string; mimeType: string; size: number }) {

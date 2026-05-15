@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const SESSION_KEY = "swarm-ide.session.v1";
+import { SESSION_KEY } from "@/lib/constants";
 
 export default function ClearDbButton() {
   const [busy, setBusy] = useState<"reset" | null>(null);

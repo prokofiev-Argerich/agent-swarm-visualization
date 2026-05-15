@@ -15,7 +15,7 @@ type WorkspaceDefaults = {
 type GraphNode = { id: UUID; role: string; parentId: UUID | null };
 type GraphEdge = { from: UUID; to: UUID; count: number; lastSendTime: string };
 
-const SESSION_KEY = "swarm-ide.session.v1";
+import { SESSION_KEY } from "@/lib/constants";
 
 function loadSession(): WorkspaceDefaults | null {
   try {

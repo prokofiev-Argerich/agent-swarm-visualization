@@ -2,19 +2,7 @@ export const runtime = "nodejs";
 
 import { getUpstashRealtime } from "@/runtime/upstash-realtime";
 
-function sse(data: unknown) {
-  return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-function sseWithId(id: string | number | null | undefined, data: unknown) {
-  const prefix =
-    typeof id === "string"
-      ? `id: ${id}\n`
-      : typeof id === "number"
-        ? `id: ${id}\n`
-        : "";
-  return new TextEncoder().encode(`${prefix}data: ${JSON.stringify(data)}\n\n`);
-}
+import { sseWithId, sseKeepalive } from "@/lib/sse";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -25,7 +13,7 @@ export async function GET(req: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const sendKeepalive = () => controller.enqueue(new TextEncoder().encode(`: ping\n\n`));
+      const sendKeepalive = () => controller.enqueue(sseKeepalive());
 
       let upstashUnsubscribe: (() => void) | null = null;
 

@@ -1,98 +1,81 @@
 export const runtime = "nodejs";
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { store } from "@/lib/storage";
+import { writeUploadedFile } from "@/lib/file-service";
+import { ALLOWED_FILE_EXTENSIONS, MAX_FILE_SIZE } from "@/lib/constants";
+import { z } from "zod";
 
-const ALLOWED_EXTENSIONS = new Set(["md", "txt", "json", "csv"]);
 const EXT_TO_MIME: Record<string, string> = {
   md: "text/markdown",
   txt: "text/plain",
   json: "application/json",
   csv: "text/csv",
 };
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
 function getExtension(filename: string): string {
   const idx = filename.lastIndexOf(".");
   return idx >= 0 ? filename.slice(idx + 1).toLowerCase() : "";
 }
 
-function getUploadDir(): string {
-  return path.join(process.cwd(), "data", "uploads");
-}
+const UploadSchema = z.object({
+  workspaceId: z.string().uuid(),
+  file: z.instanceof(File).refine((f) => f.size > 0, "Empty file"),
+});
 
 export async function POST(req: Request) {
-  let workspaceId: string | null = null;
   try {
     const formData = await req.formData();
-    workspaceId = (formData.get("workspaceId") as string | null)?.trim() ?? null;
+    const workspaceId = (formData.get("workspaceId") as string | null)?.trim() ?? "";
     const file = formData.get("file") as File | null;
 
-    if (!workspaceId) {
-      return Response.json({ error: "Missing workspaceId" }, { status: 400 });
-    }
-    if (!file) {
-      return Response.json({ error: "Missing file" }, { status: 400 });
+    const parsed = UploadSchema.safeParse({ workspaceId, file });
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues.map((e) => e.message).join(", ") }, { status: 400 });
     }
 
-    // Verify workspace exists
+    const validWorkspaceId = parsed.data.workspaceId;
+
     const workspaces = await store.listWorkspaces();
-    if (!workspaces.some((w) => w.id === workspaceId)) {
+    if (!workspaces.some((w) => w.id === validWorkspaceId)) {
       return Response.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const filename = file.name;
+    const filename = file!.name;
     const ext = getExtension(filename);
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
+    if (!ALLOWED_FILE_EXTENSIONS.has(ext)) {
       return Response.json(
-        { error: `Invalid file type. Allowed: ${Array.from(ALLOWED_EXTENSIONS).join(", ")}` },
+        { error: `Invalid file type. Allowed: ${Array.from(ALLOWED_FILE_EXTENSIONS).join(", ")}` },
         { status: 400 }
       );
     }
 
-    const fileSize = file.size;
+    const fileSize = file!.size;
     if (fileSize > MAX_FILE_SIZE) {
       return Response.json({ error: `File too large. Max: ${MAX_FILE_SIZE / 1024 / 1024}MB` }, { status: 413 });
     }
-    if (fileSize === 0) {
-      return Response.json({ error: "Empty file" }, { status: 400 });
-    }
 
-    const mimeType = (EXT_TO_MIME[ext] ?? file.type) || "application/octet-stream";
-
+    const mimeType = (EXT_TO_MIME[ext] ?? file!.type) || "application/octet-stream";
     const fileId = crypto.randomUUID();
-    const uploadDir = path.join(getUploadDir(), workspaceId);
-    await fs.mkdir(uploadDir, { recursive: true });
+    const buffer = Buffer.from(await file!.arrayBuffer());
 
-    const tempPath = path.join(uploadDir, `${fileId}.tmp`);
-    const finalPath = path.join(uploadDir, fileId);
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(tempPath, buffer);
-    await fs.rename(tempPath, finalPath);
+    await writeUploadedFile(validWorkspaceId, fileId, buffer);
 
     try {
       await store.createFile({
         id: fileId,
-        workspaceId,
+        workspaceId: validWorkspaceId,
         filename,
         mimeType,
         size: fileSize,
       });
     } catch (dbErr) {
-      await fs.unlink(finalPath).catch(() => {});
+      const { deleteUploadedFile } = await import("@/lib/file-service");
+      await deleteUploadedFile(validWorkspaceId, fileId);
       throw dbErr;
     }
 
     return Response.json(
-      {
-        fileId,
-        filename,
-        mimeType,
-        size: fileSize,
-        workspaceId,
-      },
+      { fileId, filename, mimeType, size: fileSize, workspaceId: validWorkspaceId },
       { status: 201 }
     );
   } catch (err) {
