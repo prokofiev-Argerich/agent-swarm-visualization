@@ -13,6 +13,7 @@ import { IMMessageList } from "./IMMessageList";
 import { IMHistoryList } from "./IMHistoryList";
 import { FilePanel } from "./components/FilePanel";
 import { Composer } from "./components/Composer";
+import { apiPaths } from "@/lib/api-paths";
 
 // Create code plugin with dark theme
 const code = createCodePlugin({
@@ -603,7 +604,7 @@ function IMPageInner() {
 
     if (overrideWorkspaceId) {
       const ensured = await api<WorkspaceDefaults>(
-        `/api/workspaces/${overrideWorkspaceId}/defaults`
+        apiPaths.workspaceDefaults(overrideWorkspaceId)
       );
       saveSession(ensured);
       setSession(ensured);
@@ -618,7 +619,7 @@ function IMPageInner() {
     if (existing) {
       try {
         const ensured = await api<WorkspaceDefaults>(
-          `/api/workspaces/${existing.workspaceId}/defaults`
+          apiPaths.workspaceDefaults(existing.workspaceId)
         );
         saveSession(ensured);
         setSession(ensured);
@@ -639,7 +640,7 @@ function IMPageInner() {
       if (recent.workspaces.length > 0) {
         const targetId = recent.workspaces[0]!.id;
         const ensured = await api<WorkspaceDefaults>(
-          `/api/workspaces/${targetId}/defaults`
+          apiPaths.workspaceDefaults(targetId)
         );
         saveSession(ensured);
         setSession(ensured);
@@ -704,12 +705,11 @@ function IMPageInner() {
       opts?: { markRead?: boolean; silent?: boolean; skipGroupRefresh?: boolean }
     ) => {
       if (!opts?.silent) setStatus("messages");
-      const q = new URLSearchParams();
-      if (opts?.markRead ?? true) q.set("markRead", "true");
-      q.set("readerId", s.humanAgentId);
-      const suffix = q.size ? `?${q.toString()}` : "";
       const { messages } = await api<{ messages: Message[] }>(
-        `/api/groups/${groupId}/messages${suffix}`
+        apiPaths.groupMessages(groupId, {
+          markRead: opts?.markRead ?? true,
+          readerId: s.humanAgentId,
+        })
       );
       setMessages(messages);
       if (!opts?.silent) setStatus("idle");
@@ -807,8 +807,9 @@ function IMPageInner() {
       toolResultBuffersRef.current = new Map();
 
       const groupId = activeGroupIdRef.current;
-      const suffix = groupId ? `?groupId=${encodeURIComponent(groupId)}` : "";
-      const es = new EventSource(`/api/agents/${agentId}/context-stream${suffix}`);
+      const es = new EventSource(
+        apiPaths.agentContextStream(agentId, { groupId: groupId ?? undefined })
+      );
       esRef.current = es;
 
       es.onmessage = (evt) => {
@@ -996,7 +997,7 @@ function IMPageInner() {
     queueMicrotask(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
 
     try {
-      await api(`/api/groups/${activeGroupId}/messages`, {
+      await api(apiPaths.groupMessages(activeGroupId), {
         method: "POST",
         body: JSON.stringify({ senderId: session.humanAgentId, content: text, contentType: "text" }),
       });

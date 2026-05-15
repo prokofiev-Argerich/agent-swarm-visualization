@@ -32,6 +32,9 @@
       "@/runtime/*": [
         "./src/runtime/*"
       ],
+      "@/server/*": [
+        "./src/server/*"
+      ],
       "@/app/*": [
         "./app/*"
       ]
