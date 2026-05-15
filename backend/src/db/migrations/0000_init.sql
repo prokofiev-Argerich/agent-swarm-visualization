@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS "workspaces" (
 	"name" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL
 );
----> statement-breakpoint
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "agents" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS "agents" (
 	"llm_history" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL
 );
----> statement-breakpoint
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "groups" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS "groups" (
 	"context_tokens" integer DEFAULT 0,
 	"created_at" timestamp with time zone NOT NULL
 );
----> statement-breakpoint
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "group_members" (
 	"group_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS "group_members" (
 	"joined_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "group_members_group_id_user_id_pk" PRIMARY KEY("group_id","user_id")
 );
----> statement-breakpoint
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "messages" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS "messages" (
 	"content" text NOT NULL,
 	"send_time" timestamp with time zone NOT NULL
 );
----> statement-breakpoint
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "files" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -47,37 +47,37 @@ CREATE TABLE IF NOT EXISTS "files" (
 	"size" integer NOT NULL,
 	"created_at" timestamp with time zone NOT NULL
 );
----> statement-breakpoint
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "agents" ADD CONSTRAINT "agents_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
----> statement-breakpoint
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "groups" ADD CONSTRAINT "groups_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
----> statement-breakpoint
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
----> statement-breakpoint
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "messages" ADD CONSTRAINT "messages_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
----> statement-breakpoint
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "messages" ADD CONSTRAINT "messages_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
----> statement-breakpoint
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "files" ADD CONSTRAINT "files_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
