@@ -10,6 +10,7 @@ backend/.env.*
 backend/node_modules/
 backend/.next/
 backend/tsconfig.tsbuildinfo
+backend/package-lock.json
 backend/.agent_logs/
 backend/.agent_stream_logs/
 backend/.agent_llm_requests/
