@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const SESSION_KEY = "agent-wechat.session.v1";
+const SESSION_KEY = "swarm-ide.session.v1";
 
 export default function ClearDbButton() {
   const [busy, setBusy] = useState<"reset" | null>(null);

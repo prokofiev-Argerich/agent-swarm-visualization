@@ -256,7 +256,7 @@ class McpRegistry {
   }
 
   private async connectServer(name: string, server: McpServerConfig) {
-    const client = new Client({ name: "agent-wechat", version: "0.0.1" });
+    const client = new Client({ name: "swarm-ide", version: "0.0.1" });
     const timeout = server.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     if (server.command || server.type === "stdio") {

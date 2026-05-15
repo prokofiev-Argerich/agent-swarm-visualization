@@ -1,28 +1,28 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: agent-wechat-postgres
+    container_name: swarm-ide-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: agent_wechat
+      POSTGRES_DB: swarm_ide
     ports:
       - "5432:5432"
     volumes:
-      - agent_wechat_pg:/var/lib/postgresql/data
+      - swarm_ide_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_wechat"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d swarm_ide"]
       interval: 5s
       timeout: 5s
       retries: 10
   redis:
     image: redis:7-alpine
-    container_name: agent-wechat-redis
+    container_name: swarm-ide-redis
     ports:
       - "6379:6379"
     volumes:
-      - agent_wechat_redis:/data
+      - swarm_ide_redis:/data
 
 volumes:
-  agent_wechat_pg:
-  agent_wechat_redis:
+  swarm_ide_pg:
+  swarm_ide_redis:

@@ -153,13 +153,13 @@ export class WorkspaceUIBus {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __agentWechatUIBus: WorkspaceUIBus | undefined;
+  var __swarmIdeUIBus: WorkspaceUIBus | undefined;
 }
 
 export function getWorkspaceUIBus() {
-  if (globalThis.__agentWechatUIBus) return globalThis.__agentWechatUIBus;
-  globalThis.__agentWechatUIBus = new WorkspaceUIBus();
-  return globalThis.__agentWechatUIBus;
+  if (globalThis.__swarmIdeUIBus) return globalThis.__swarmIdeUIBus;
+  globalThis.__swarmIdeUIBus = new WorkspaceUIBus();
+  return globalThis.__swarmIdeUIBus;
 }
 
 async function persistUIEvent(workspaceId: string, evt: UIEvent) {

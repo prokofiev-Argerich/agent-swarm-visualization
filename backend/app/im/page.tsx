@@ -145,7 +145,7 @@ type AgentStreamEvent =
   | { id: number; at: number; event: "agent.done"; data: { finishReason?: string | null } }
   | { id: number; at: number; event: "agent.error"; data: { message: string } };
 
-const SESSION_KEY = "agent-wechat.session.v1";
+const SESSION_KEY = "swarm-ide.session.v1";
 const RIGHT_PANEL_MIN_HEIGHT = 120;
 const RIGHT_PANEL_HEADER_HEIGHT = 32;
 const MID_CHAT_MIN_HEIGHT = 0;

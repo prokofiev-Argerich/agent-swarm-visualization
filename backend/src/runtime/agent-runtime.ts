@@ -1523,20 +1523,20 @@ export class AgentRuntime {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __agentWechatRuntime: AgentRuntime | undefined;
+  var __swarmIdeRuntime: AgentRuntime | undefined;
   // eslint-disable-next-line no-var
-  var __agentWechatRuntimeVersion: number | undefined;
+  var __swarmIdeRuntimeVersion: number | undefined;
 }
 
 export function getAgentRuntime() {
   if (
-    globalThis.__agentWechatRuntime &&
-    globalThis.__agentWechatRuntimeVersion === AgentRuntime.VERSION
+    globalThis.__swarmIdeRuntime &&
+    globalThis.__swarmIdeRuntimeVersion === AgentRuntime.VERSION
   ) {
-    return globalThis.__agentWechatRuntime;
+    return globalThis.__swarmIdeRuntime;
   }
 
-  globalThis.__agentWechatRuntime = new AgentRuntime();
-  globalThis.__agentWechatRuntimeVersion = AgentRuntime.VERSION;
-  return globalThis.__agentWechatRuntime;
+  globalThis.__swarmIdeRuntime = new AgentRuntime();
+  globalThis.__swarmIdeRuntimeVersion = AgentRuntime.VERSION;
+  return globalThis.__swarmIdeRuntime;
 }
