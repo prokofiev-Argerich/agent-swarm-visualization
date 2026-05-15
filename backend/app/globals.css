@@ -641,3 +641,25 @@ textarea {
   margin: 12px 12px 0;
   font-size: 13px;
 }
+
+.row:hover .row-delete-btn {
+  opacity: 1 !important;
+}
+
+.row-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444 !important;
+}
+
+.file-row:hover {
+  background: #09090b;
+}
+
+.file-row:hover .btn {
+  opacity: 1;
+}
+
+.file-row .btn {
+  opacity: 0.6;
+  transition: opacity 120ms ease;
+}

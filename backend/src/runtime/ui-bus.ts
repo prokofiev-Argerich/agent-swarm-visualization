@@ -74,6 +74,18 @@ export type UIEvent =
   | {
       id: number;
       at: number;
+      event: "ui.agent.file.read";
+      data: {
+        workspaceId: string;
+        agentId: string;
+        fileId: string;
+        filename: string;
+        truncated: boolean;
+      };
+    }
+  | {
+      id: number;
+      at: number;
       event: "ui.db.write";
       data: {
         workspaceId: string;

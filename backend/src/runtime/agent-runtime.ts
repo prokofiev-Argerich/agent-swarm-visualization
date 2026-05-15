@@ -9,6 +9,7 @@ import { getMcpRegistry } from "./mcp";
 import { appendAgentHistorySnapshot, appendAgentLlmRequestRaw, appendAgentStreamEvent } from "./agent-logger";
 import { formatSkillPrompt, getSkillLoader } from "./skill-loader";
 import { exec } from "node:child_process";
+import { promises as fs } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
 
@@ -47,6 +48,27 @@ async function buildSkillsBlock(): Promise<string> {
   }
 }
 
+async function buildFilesBlock(workspaceId: UUID): Promise<string> {
+  try {
+    const files = await store.listFilesByWorkspace(workspaceId);
+    if (files.length === 0) return "";
+    const lines = [
+      "## Uploaded Files in this Workspace",
+      "The following files have been uploaded to this workspace. To read any file, you MUST use the read_file tool with the fileId (never a filesystem path). Do NOT use bash or cat to read uploaded files.",
+      "",
+    ];
+    for (const f of files.slice(0, 20)) {
+      lines.push(`- ${f.filename} (fileId: ${f.id}, size: ${f.size} bytes)`);
+    }
+    if (files.length > 20) {
+      lines.push(`\n... and ${files.length - 20} more files (not shown).`);
+    }
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
+
 function historyHasSkills(history: HistoryMessage[]) {
   return history.some(
     (msg) =>
@@ -58,11 +80,11 @@ function mapOpenRouterMessages(history: HistoryMessage[]): Array<Record<string, 
   return history.map((msg) => {
     if (msg.role === "tool") return msg;
 
-    const { reasoning_content, ...rest } = msg as Exclude<HistoryMessage, { role: "tool" }>;
-    const mapped: Record<string, unknown> = { ...rest };
+    const mapped: Record<string, unknown> = { ...msg };
 
-    if (msg.role === "assistant" && reasoning_content) {
-      mapped.reasoning = reasoning_content;
+    if (msg.role === "assistant" && msg.reasoning_content) {
+      mapped.reasoning_content = msg.reasoning_content;
+      mapped.reasoning = msg.reasoning_content;
     }
 
     return mapped;
@@ -228,6 +250,22 @@ const AGENT_TOOLS = [
           groupId: { type: "string" },
         },
         required: ["groupId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_file",
+      description:
+        "Read the contents of a file that was uploaded to the workspace. Accepts a fileId (returned by upload), never a filesystem path. Returns {filename, content, truncated}. Only files within the current workspace are accessible.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          fileId: { type: "string", description: "The fileId returned by the upload API" },
+        },
+        required: ["fileId"],
       },
     },
   },
@@ -451,11 +489,25 @@ class AgentRunner {
           `Your replies are NOT automatically delivered to humans.\n` +
           `To send messages, you MUST call tools like send_group_message or send_direct_message.\n` +
           `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.\n` +
-          `If you need to run shell commands, use the bash tool.` +
+          `If you need to run shell commands, use the bash tool.\n` +
+          `If you need to read a file that was uploaded to this workspace, use the read_file tool with the fileId (never a filesystem path).` +
           (skillsBlock ? `\n\n${skillsBlock}` : ""),
       });
     } else if (skillsBlock && !hasSkills) {
       history.push({ role: "system", content: skillsBlock });
+    }
+
+    // Inject workspace file list into context
+    const filesBlock = await buildFilesBlock(workspaceId);
+    if (filesBlock) {
+      // Remove previous files block if present to avoid duplication
+      const existingFilesIdx = history.findIndex(
+        (m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("## Uploaded Files")
+      );
+      if (existingFilesIdx >= 0) {
+        history.splice(existingFilesIdx, 1);
+      }
+      history.push({ role: "system", content: filesBlock });
     }
 
     const userContent = unreadMessages
@@ -648,6 +700,52 @@ class AgentRunner {
 
       emitToolDone(true);
       return { ok: true, content: formatSkillPrompt(skill) };
+    }
+
+    if (name === "read_file") {
+      const args = safeJsonParse<{ fileId?: string }>(input.call.argumentsText, {});
+      const fileId = (args.fileId ?? "").trim();
+      if (!fileId) {
+        emitToolDone(false);
+        return { ok: false, error: "Missing fileId" };
+      }
+
+      const fileMeta = await store.getFile({ fileId, workspaceId });
+      if (!fileMeta) {
+        emitToolDone(false);
+        return { ok: false, error: "File not found or not accessible in this workspace" };
+      }
+
+      const uploadDir = path.join(process.cwd(), "data", "uploads", workspaceId);
+      const filePath = path.join(uploadDir, fileId);
+      const resolvedPath = path.resolve(filePath);
+      const resolvedUploadDir = path.resolve(uploadDir);
+      if (!resolvedPath.startsWith(resolvedUploadDir)) {
+        emitToolDone(false);
+        return { ok: false, error: "Invalid fileId" };
+      }
+
+      try {
+        const content = await fs.readFile(filePath, "utf-8");
+        const MAX_CHARS = 100_000;
+        const truncated = content.length > MAX_CHARS;
+        const resultContent = truncated ? content.slice(0, MAX_CHARS) : content;
+        getWorkspaceUIBus().emit(workspaceId, {
+          event: "ui.agent.file.read",
+          data: {
+            workspaceId,
+            agentId: this.agentId,
+            fileId,
+            filename: fileMeta.filename,
+            truncated,
+          },
+        });
+        emitToolDone(true);
+        return { ok: true, filename: fileMeta.filename, content: resultContent, truncated, totalBytes: fileMeta.size };
+      } catch (err) {
+        emitToolDone(false);
+        return { ok: false, error: err instanceof Error ? err.message : "Failed to read file" };
+      }
     }
 
     if (name === "bash") {

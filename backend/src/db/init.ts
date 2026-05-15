@@ -52,4 +52,15 @@ export async function ensureSchema() {
       send_time timestamptz not null
     );
   `;
+
+  await sql/* sql */ `
+    create table if not exists files (
+      id uuid primary key,
+      workspace_id uuid not null references workspaces(id) on delete cascade,
+      filename text not null,
+      mime_type text not null,
+      size integer not null,
+      created_at timestamptz not null
+    );
+  `;
 }

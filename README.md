@@ -111,6 +111,12 @@ bun dev
 
 字段说明（常用）：`type`、`command`/`args`、`url`/`httpUrl`/`sseUrl`、`headers`、`env`、`disabled`、`timeoutMs`。
 
+### 文件上传
+支持上传 `.md`、`.txt`、`.json`、`.csv` 文件到 workspace，Agent 可通过 `read_file` 工具读取：
+- 上传文件：IM 界面左侧文件面板，点击 `+` 选择文件（最大 2MB）
+- Agent 读取：点击文件自动在输入框插入 `read_file({ fileId: "..." })`，Agent 调用后会返回文件内容
+- 文件列表自动注入 Agent 上下文（最近 20 个），Agent 无需猜测路径
+
 ### Skill 支持
 后端会自动扫描技能目录并注入到新 agent 的系统提示中：
 - 默认扫描路径：`skills/` 或 `backend/skills/`

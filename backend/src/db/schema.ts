@@ -56,3 +56,14 @@ export const messages = pgTable("messages", {
   sendTime: timestamp("send_time", { withTimezone: true }).notNull(),
 });
 
+export const files = pgTable("files", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+

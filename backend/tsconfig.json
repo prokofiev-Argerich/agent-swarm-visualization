@@ -19,22 +19,21 @@
     "types": [
       "node"
     ],
-    "baseUrl": ".",
     "paths": {
       "@/lib/*": [
-        "src/lib/*"
+        "./src/lib/*"
       ],
       "@/db": [
-        "src/db/index.ts"
+        "./src/db/index.ts"
       ],
       "@/db/*": [
-        "src/db/*"
+        "./src/db/*"
       ],
       "@/runtime/*": [
-        "src/runtime/*"
+        "./src/runtime/*"
       ],
       "@/app/*": [
-        "app/*"
+        "./app/*"
       ]
     },
     "esModuleInterop": true,

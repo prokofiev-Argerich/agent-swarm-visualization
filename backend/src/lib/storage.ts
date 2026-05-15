@@ -1,9 +1,22 @@
 import { and, desc, eq, gt, inArray, ne, sql as dsql } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { agents, groupMembers, groups, messages, workspaces } from "@/db/schema";
+import { agents, files, groupMembers, groups, messages, workspaces } from "@/db/schema";
+import { ensureSchemaOnce, isMissingTableError } from "@/db/ensure";
 
 type UUID = string;
+
+async function withSchemaRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (!isMissingTableError(error)) {
+      throw error;
+    }
+    await ensureSchemaOnce();
+    return await fn();
+  }
+}
 
 function now() {
   return new Date();
@@ -27,7 +40,8 @@ function initialAgentHistory(input: {
     `Act strictly as this role when replying. Be concise and helpful.\n` +
     `Your replies are NOT automatically delivered to humans.\n` +
     `To send messages, you MUST call tools like send_group_message or send_direct_message.\n` +
-    `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.`;
+    `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.\n` +
+    `If you need to read a file that was uploaded to this workspace, use the read_file tool with the fileId (never a filesystem path).`;
 
   const history: Array<{ role: "system"; content: string }> = [{ role: "system", content }];
   const guidance = (input.guidance ?? "").trim();
@@ -1169,5 +1183,147 @@ export const store = {
       senderId: m.senderId,
       sendTime: m.sendTime.toISOString(),
     }));
+  },
+
+  async deleteAgent(input: { agentId: UUID; workspaceId: UUID }) {
+    const db = getDb();
+
+    const agent = await db
+      .select({ role: agents.role })
+      .from(agents)
+      .where(eq(agents.id, input.agentId))
+      .limit(1);
+    if (agent.length === 0) throw new Error("agent not found");
+    if (agent[0]!.role === "human") throw new Error("cannot delete human agent");
+
+    await db.transaction(async (tx) => {
+      await tx.delete(groupMembers).where(eq(groupMembers.userId, input.agentId));
+      await tx.delete(agents).where(eq(agents.id, input.agentId));
+    });
+
+    await emitDbWrite({
+      workspaceId: input.workspaceId,
+      table: "agents",
+      action: "delete",
+      recordId: input.agentId,
+    });
+  },
+
+  async deleteGroup(input: { groupId: UUID; workspaceId: UUID }) {
+    const db = getDb();
+
+    const group = await db
+      .select({ id: groups.id })
+      .from(groups)
+      .where(eq(groups.id, input.groupId))
+      .limit(1);
+    if (group.length === 0) throw new Error("group not found");
+
+    await db.transaction(async (tx) => {
+      await tx.delete(messages).where(eq(messages.groupId, input.groupId));
+      await tx.delete(groupMembers).where(eq(groupMembers.groupId, input.groupId));
+      await tx.delete(groups).where(eq(groups.id, input.groupId));
+    });
+
+    await emitDbWrite({
+      workspaceId: input.workspaceId,
+      table: "groups",
+      action: "delete",
+      recordId: input.groupId,
+    });
+  },
+
+  async deleteWorkspace(input: { workspaceId: UUID }) {
+    const db = getDb();
+
+    const ws = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.id, input.workspaceId))
+      .limit(1);
+    if (ws.length === 0) throw new Error("workspace not found");
+
+    await db.transaction(async (tx) => {
+      await tx.delete(messages).where(eq(messages.workspaceId, input.workspaceId));
+      await tx.delete(groupMembers).where(
+        inArray(
+          groupMembers.groupId,
+          tx.select({ id: groups.id }).from(groups).where(eq(groups.workspaceId, input.workspaceId))
+        )
+      );
+      await tx.delete(groups).where(eq(groups.workspaceId, input.workspaceId));
+      await tx.delete(agents).where(eq(agents.workspaceId, input.workspaceId));
+      await tx.delete(files).where(eq(files.workspaceId, input.workspaceId));
+      await tx.delete(workspaces).where(eq(workspaces.id, input.workspaceId));
+    });
+
+    // Clean up uploaded files directory
+    try {
+      const { promises: fs } = await import("node:fs");
+      const path = await import("node:path");
+      const uploadDir = path.default.join(process.cwd(), "data", "uploads", input.workspaceId);
+      await fs.rm(uploadDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  },
+
+  async createFile(input: { id: UUID; workspaceId: UUID; filename: string; mimeType: string; size: number }) {
+    return withSchemaRetry(async () => {
+      const db = getDb();
+      const createdAt = now();
+      await db.insert(files).values({
+        id: input.id,
+        workspaceId: input.workspaceId,
+        filename: input.filename,
+        mimeType: input.mimeType,
+        size: input.size,
+        createdAt,
+      });
+      return { id: input.id, createdAt: createdAt.toISOString() };
+    });
+  },
+
+  async getFile(input: { fileId: UUID; workspaceId: UUID }) {
+    return withSchemaRetry(async () => {
+      const db = getDb();
+      const rows = await db.select().from(files).where(eq(files.id, input.fileId)).limit(1);
+      if (rows.length === 0) return null;
+      const r = rows[0];
+      if (r.workspaceId !== input.workspaceId) return null;
+      return {
+        id: r.id,
+        workspaceId: r.workspaceId,
+        filename: r.filename,
+        mimeType: r.mimeType,
+        size: r.size,
+        createdAt: r.createdAt.toISOString(),
+      };
+    });
+  },
+
+  async listFilesByWorkspace(workspaceId: UUID) {
+    return withSchemaRetry(async () => {
+      const db = getDb();
+      const rows = await db.select().from(files).where(eq(files.workspaceId, workspaceId)).orderBy(files.createdAt);
+      return rows.map((r) => ({
+        id: r.id,
+        workspaceId: r.workspaceId,
+        filename: r.filename,
+        mimeType: r.mimeType,
+        size: r.size,
+        createdAt: r.createdAt.toISOString(),
+      }));
+    });
+  },
+
+  async deleteFile(input: { fileId: UUID; workspaceId: UUID }) {
+    return withSchemaRetry(async () => {
+      const db = getDb();
+      const file = await this.getFile(input);
+      if (!file) return null;
+      await db.delete(files).where(eq(files.id, input.fileId));
+      return file;
+    });
   },
 };

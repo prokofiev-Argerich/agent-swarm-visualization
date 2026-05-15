@@ -30,16 +30,6 @@ function getOpenRouterConfig() {
   return { apiKey, baseUrl, model, httpReferer, appTitle };
 }
 
-function stripReasoningFromMessages(
-  messages: Array<{ role: string; content: string; tool_calls?: unknown; reasoning_content?: string }>
-) {
-  return messages.map((msg) => {
-    if (msg.role === "tool") return msg;
-    const { reasoning_content: _omit, ...rest } = msg;
-    return rest;
-  });
-}
-
 export async function POST(req: Request) {
   const body = (await req.json()) as {
     provider?: string;
@@ -62,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     const payload: Record<string, unknown> = {
-      messages: stripReasoningFromMessages(body.messages),
+      messages: body.messages,
       stream: true,
       stream_options: { include_usage: true },
     };

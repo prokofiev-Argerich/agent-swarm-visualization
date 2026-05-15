@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from "react";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Briefcase, ChevronDown, ChevronLeft, ChevronRight, Code2, Network, User } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronLeft, ChevronRight, Code2, Network, Trash2, User } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { createCodePlugin } from "@streamdown/code";
 import { mermaid } from "@streamdown/mermaid";
@@ -57,6 +57,14 @@ type Message = {
   content: string;
   contentType: string;
   sendTime: string;
+};
+
+type FileItem = {
+  fileId: UUID;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
 };
 
 type UiStreamEvent = {
@@ -228,6 +236,9 @@ function IMPageInner() {
   const [midStackHeight, setMidStackHeight] = useState(0);
   const [nodeOffsets, setNodeOffsets] = useState<Record<string, { x: number; y: number }>>({});
   const [collapsedAgents, setCollapsedAgents] = useState<Record<string, boolean>>({});
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [showFilesPanel, setShowFilesPanel] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const esRef = useRef<EventSource | null>(null);
@@ -532,6 +543,13 @@ function IMPageInner() {
     setAgents(agents);
   }, []);
 
+  const refreshFiles = useCallback(async (s: WorkspaceDefaults) => {
+    const { files } = await api<{ files: FileItem[] }>(
+      `/api/files?workspaceId=${encodeURIComponent(s.workspaceId)}`
+    );
+    setFiles(files);
+  }, []);
+
   const formatLlmHistory = useCallback((raw: string) => {
     try {
       return JSON.stringify(JSON.parse(raw), null, 2);
@@ -590,6 +608,7 @@ function IMPageInner() {
       setActiveGroupId(ensured.defaultGroupId);
       setStatus("idle");
       void refreshAgents(ensured);
+      void refreshFiles(ensured);
       return;
     }
 
@@ -604,6 +623,7 @@ function IMPageInner() {
         setActiveGroupId(ensured.defaultGroupId);
         setStatus("idle");
         void refreshAgents(ensured);
+        void refreshFiles(ensured);
         return;
       } catch {
         // fall through
@@ -624,6 +644,7 @@ function IMPageInner() {
         setActiveGroupId(ensured.defaultGroupId);
         setStatus("idle");
         void refreshAgents(ensured);
+        void refreshFiles(ensured);
         return;
       }
     } catch {
@@ -639,7 +660,8 @@ function IMPageInner() {
     setActiveGroupId(created.defaultGroupId);
     setStatus("idle");
     void refreshAgents(created);
-  }, [refreshAgents]);
+    void refreshFiles(created);
+  }, [refreshAgents, refreshFiles]);
 
   const createWorkspace = useCallback(async (name?: string) => {
     setError(null);
@@ -1181,6 +1203,9 @@ function IMPageInner() {
           const table = payload.data?.table ?? "db";
           const action = payload.data?.action ?? "write";
           pushVizEvent(payload, `DB ${action}: ${table}`, "db");
+          if (table === "files" && session) {
+            void refreshFiles(session);
+          }
         }
       }
 
@@ -1198,6 +1223,7 @@ function IMPageInner() {
     pushVizEvent,
     scheduleWorkspaceRefresh,
     session,
+    refreshFiles,
   ]);
 
   useEffect(() => {
@@ -1510,6 +1536,71 @@ function IMPageInner() {
     setCollapsedAgents((prev) => ({ ...prev, [agentId]: !prev[agentId] }));
   }, []);
 
+  const deleteAgent = useCallback(async (agentId: string, workspaceId: string) => {
+    if (!confirm("确定要删除这个 Agent 吗？关联的群组也会被删除。")) return;
+    await api(`/api/agents/${encodeURIComponent(agentId)}?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      method: "DELETE",
+    });
+    setAgents((prev) => prev.filter((a) => a.id !== agentId));
+    setGroups((prev) => prev.filter((g) => !g.memberIds.includes(agentId)));
+    if (activeGroupId && groups.find((g) => g.id === activeGroupId)?.memberIds.includes(agentId)) {
+      setActiveGroupId(null);
+    }
+  }, [activeGroupId, groups]);
+
+  const deleteGroup = useCallback(async (groupId: string, workspaceId: string) => {
+    if (!confirm("确定要删除这个群组吗？群组内的所有消息也会被删除。")) return;
+    await api(`/api/groups/${encodeURIComponent(groupId)}?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      method: "DELETE",
+    });
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+    if (activeGroupId === groupId) {
+      setActiveGroupId(null);
+      setMessages([]);
+    }
+  }, [activeGroupId]);
+
+  const deleteWorkspace = useCallback(async (workspaceId: string) => {
+    if (!confirm("⚠️ 确定要删除整个 Workspace 吗？所有 Agent、群组和消息都会被永久删除！")) return;
+    await api(`/api/workspaces/${encodeURIComponent(workspaceId)}`, { method: "DELETE" });
+    localStorage.removeItem(SESSION_KEY);
+    window.location.reload();
+  }, []);
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      if (!session) return;
+      const formData = new FormData();
+      formData.append("workspaceId", session.workspaceId);
+      formData.append("file", file);
+      try {
+        const res = await fetch("/api/files/upload", { method: "POST", body: formData });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`${res.status} ${text}`);
+        }
+        await refreshFiles(session);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [session, refreshFiles]
+  );
+
+  const onFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) void uploadFile(file);
+      e.target.value = "";
+    },
+    [uploadFile]
+  );
+
+  const insertFileToDraft = useCallback((file: FileItem) => {
+    const text = `read_file({ fileId: "${file.fileId}" })`;
+    setDraft((prev) => (prev ? prev + "\n" + text : text));
+  }, []);
+
   const renderGroupRow = (
     g: Group,
     tree?: {
@@ -1550,8 +1641,7 @@ function IMPageInner() {
               </span>
             ) : null}
             {tree?.hasChildren ? (
-              <button
-                type="button"
+              <span
                 className="tree-caret"
                 onClick={(e) => {
                   e.preventDefault();
@@ -1559,9 +1649,11 @@ function IMPageInner() {
                   toggleAgentCollapsed(tree.agentId);
                 }}
                 title={tree.collapsed ? "展开" : "收起"}
+                role="button"
+                tabIndex={0}
               >
                 {tree.collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-              </button>
+              </span>
             ) : tree ? (
               <span className="tree-caret-placeholder" />
             ) : null}
@@ -1569,7 +1661,39 @@ function IMPageInner() {
               {getGroupLabel(g)}
             </div>
           </div>
-          {g.unreadCount > 0 && <span className="badge">{g.unreadCount}</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {g.unreadCount > 0 && <span className="badge">{g.unreadCount}</span>}
+            <span
+              className="row-delete-btn"
+              role="button"
+              tabIndex={0}
+              title={tree ? "删除 Agent" : "删除群组"}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!session) return;
+                if (tree) {
+                  void deleteAgent(tree.agentId, session.workspaceId);
+                } else {
+                  void deleteGroup(g.id, session.workspaceId);
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 20,
+                height: 20,
+                borderRadius: 4,
+                cursor: "pointer",
+                color: "#71717a",
+                opacity: 0,
+                transition: "opacity 0.15s",
+              }}
+            >
+              <Trash2 size={14} />
+            </span>
+          </div>
         </div>
         {g.lastMessage ? (
           <div
@@ -1623,7 +1747,28 @@ function IMPageInner() {
               {session?.workspaceId ?? "-"}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            {session && (
+              <button
+                className="btn"
+                style={{
+                  padding: "4px 8px",
+                  fontSize: 12,
+                  borderColor: "#7f1d1d",
+                  background: "#1f0b0b",
+                  color: "#fecaca",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                onClick={() => void deleteWorkspace(session.workspaceId)}
+                title="删除 Workspace"
+              >
+                <Trash2 size={14} />
+                删除
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ padding: 12 }}>
@@ -1657,6 +1802,85 @@ function IMPageInner() {
             </>
           )}
         </div>
+
+        {/* Files Panel */}
+        {session && (
+          <div style={{ borderTop: "1px solid #27272a", padding: "10px 12px", flexShrink: 0, maxHeight: 240, overflow: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#a1a1aa" }}>Files</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btn"
+                  style={{ padding: "2px 8px", fontSize: 11 }}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="上传文件"
+                >
+                  +
+                </button>
+                <button
+                  className="btn"
+                  style={{ padding: "2px 8px", fontSize: 11 }}
+                  onClick={() => setShowFilesPanel((p) => !p)}
+                >
+                  {showFilesPanel ? "−" : "+"}
+                </button>
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,.txt,.json,.csv"
+              style={{ display: "none" }}
+              onChange={onFileInputChange}
+            />
+            {showFilesPanel && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {files.length === 0 ? (
+                  <div className="muted" style={{ fontSize: 11, padding: "4px 0" }}>
+                    暂无文件
+                  </div>
+                ) : (
+                  files.map((f) => (
+                    <div
+                      key={f.fileId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 6px",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: 11,
+                        color: "#e4e4e7",
+                      }}
+                      className="file-row"
+                      onClick={() => insertFileToDraft(f)}
+                      title="点击插入 read_file 到输入框"
+                    >
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {f.filename}
+                      </span>
+                      <span className="muted" style={{ fontSize: 10, whiteSpace: "nowrap" }}>
+                        {(f.size / 1024).toFixed(1)}KB
+                      </span>
+                      <button
+                        className="btn"
+                        style={{ padding: "1px 4px", fontSize: 10 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(f.fileId).catch(() => {});
+                        }}
+                        title="复制 fileId"
+                      >
+                        ID
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
         </aside>
       }
       mid={
