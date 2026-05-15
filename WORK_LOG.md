@@ -59,15 +59,66 @@ IM 界面新增删除按钮，支持删除 agent、group 和 workspace。
 
 ---
 
+## 2026-05-15 重构阶段
+
+### 阶段 0：提取共享工具
+
+| 文件 | 说明 |
+|---|---|
+| `backend/src/lib/constants.ts` | 集中 SESSION_KEY、ALLOWED_FILE_EXTENSIONS、MAX_FILE_SIZE |
+| `backend/src/lib/sse.ts` | 统一 SSE 封装（sseWithId、sseKeepalive、createSSEResponse） |
+| `backend/src/lib/file-service.ts` | 文件系统操作独立（write/read/delete uploads） |
+| `backend/app/api/files/*` | files API 加 Zod 验证 |
+
+### 阶段 1：Drizzle migration
+
+| 文件 | 说明 |
+|---|---|
+| `backend/drizzle.config.ts` | 迁移配置 |
+| `backend/src/db/migrate.ts` | `drizzle-orm/postgres-js/migrator` 封装 |
+| `backend/src/db/migrations/0000_init.sql` | 初始迁移（6 表 + 外键） |
+| `backend/src/db/init.ts` | 改用 `migrate()` 代替手写 `CREATE TABLE` |
+
+### 阶段 2：Storage 按领域拆分
+
+| 文件 | 说明 |
+|---|---|
+| `backend/src/lib/storage/shared.ts` | withSchemaRetry、uuid、now、initialAgentHistory、emitDbWrite |
+| `backend/src/lib/storage/workspaces.ts` | list/create/ensureDefaults/delete |
+| `backend/src/lib/storage/agents.ts` | create/list/get/setHistory/unread/delete |
+| `backend/src/lib/storage/groups.ts` | create/list/mergeP2P/members/delete |
+| `backend/src/lib/storage/messages.ts` | list/send/directMessage/markRead |
+| `backend/src/lib/storage/files.ts` | create/get/list/delete |
+| `backend/src/lib/storage/index.ts` | 组装 store 对象，调用方兼容 |
+
+### 阶段 3：IM 页面组件提取
+
+| 文件 | 说明 |
+|---|---|
+| `backend/app/im/components/FilePanel.tsx` | 文件面板（上传、展开/收起、fileId 复制） |
+| `backend/app/im/components/Composer.tsx` | 输入框（Ctrl+Enter 发送） |
+
+### 阶段 4：统一 LLM StreamAssembler
+
+| 文件 | 说明 |
+|---|---|
+| `backend/src/lib/llm/types.ts` | LlmChunk、AssembledState、TokenUsage |
+| `backend/src/lib/llm/assembler.ts` | 统一 StreamAssembler（替代 GLMStreamAssembler + OpenAIStreamAssembler） |
+| `backend/src/lib/llm/sse.ts` | parseSSEJsonLines |
+| `backend/src/lib/llm/index.ts` | 统一导出 |
+
+---
+
 ## 未完成项
 
 | 优先级 | 项 |
 |---|---|
 | 中 | 文件删除 API/前端（storage 有 `deleteFile`，未暴露） |
+| 中 | 推广 Zod 到所有 API（目前只有 files API） |
 | 低 | 文件内容预览 |
 | 低 | 多文件批量上传 |
 | 低 | 文件定期清理（长期） |
-| 低 | Drizzle migration 系统（长期） |
+| 低 | 统一 API 错误处理中间件 |
 
 ## 风险记录
 
