@@ -22,7 +22,7 @@ export default async function HomePage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <h1 style={{ margin: 0, fontSize: 20 }}>Agent Wechat</h1>
+      <h1 style={{ margin: 0, fontSize: 20 }}>Swarm-IDE</h1>
       <p className="muted" style={{ marginTop: 8 }}>
         MVP UI
       </p>

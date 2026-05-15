@@ -1,4 +1,4 @@
-# agent-wechat backend (MVP)
+# Backend (MVP)
 
 独立 Next.js 后端（Route Handlers），用 Bun 运行。
 

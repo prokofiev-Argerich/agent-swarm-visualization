@@ -208,7 +208,7 @@ export default function WhitepaperHome() {
           <div className="hidden md:flex gap-8">
             <Link href="/demo" className="text-zinc-500 hover:text-white transition-colors">{t.nav.demo}</Link>
             <a href="#" className="text-zinc-500 hover:text-white transition-colors">{t.nav.whitepaper}</a>
-            <a href="https://github.com/chmod777john/agent-wechat" target="_blank" className="text-zinc-500 hover:text-white transition-colors">{t.nav.github}</a>
+            <a href="https://github.com/prokofiev-Argerich/agent-swarm-visualization" target="_blank" className="text-zinc-500 hover:text-white transition-colors">{t.nav.github}</a>
           </div>
           <button onClick={toggleLang} className="flex items-center gap-2 px-3 py-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-200 hover:bg-zinc-800 transition-all font-bold">
             <Globe size={14} /> {lang.toUpperCase()}
@@ -229,7 +229,7 @@ export default function WhitepaperHome() {
           <p className="max-w-2xl text-lg leading-relaxed mb-10 text-zinc-500">{t.hero.subtitle}</p>
           <div className="flex flex-wrap gap-4">
             <a
-              href="https://github.com/chmod777john/agent-wechat"
+              href="https://github.com/prokofiev-Argerich/agent-swarm-visualization"
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-3 bg-white text-black font-bold hover:bg-zinc-200 transition-all flex items-center gap-2"
@@ -348,19 +348,10 @@ export default function WhitepaperHome() {
                <div className="flex gap-6 items-center">
                   <a href="https://discord.gg/NQBg63b8A5" target="_blank" className="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-[#5865F2] hover:border-[#5865F2] hover:text-white transition-all shadow-xl group relative text-zinc-400"><Discord size={20} /></a>
                   <div onMouseEnter={() => setShowWeChat(true)} onMouseLeave={() => setShowWeChat(false)} className="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-[#07C160] hover:border-[#07C160] hover:text-white transition-all shadow-xl cursor-pointer relative group text-zinc-400"><MessageCircle size={20} /><AnimatePresence>{showWeChat && (<motion.div initial={{ opacity: 0, y: 10, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.9 }} className="absolute bottom-16 left-1/2 -translate-x-1/2 p-4 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 border border-zinc-200"><img src="/wechat-qr.png" alt="WeChat QR" className="w-32 h-32 rounded-lg" /><div className="text-black text-[10px] font-bold mt-2 text-center uppercase tracking-tighter whitespace-nowrap">{t.footer.wechat_tip}</div><div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-r border-b border-zinc-200"></div></motion.div>)}</AnimatePresence></div>
-                  <a href="https://github.com/chmod777john/agent-wechat" target="_blank" className="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-white hover:border-white hover:text-black transition-all shadow-xl group relative text-zinc-400"><Cpu size={20} /></a>
-               </div>
-            </div>
-            <div className="flex flex-col gap-4 text-xs">
-               <div className="text-zinc-600 font-bold uppercase tracking-widest">Discussion</div>
-               <div className="flex flex-col gap-2">
-                  <a href="https://mp.weixin.qq.com/s/NyTKgrIynElcpDe7v2naDQ" target="_blank" className="hover:text-white transition-colors">{t.footer.wechat_article}</a>
-                  <a href="https://zhuanlan.zhihu.com/p/1990912369149366445" target="_blank" className="hover:text-white transition-colors">{t.footer.zhihu_article}</a>
-                  <a href="https://x.com/chmod777john/status/2007634694150434875" target="_blank" className="hover:text-white transition-colors">{t.footer.x_post}</a>
+                  <a href="https://github.com/prokofiev-Argerich/agent-swarm-visualization" target="_blank" className="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-white hover:border-white hover:text-black transition-all shadow-xl group relative text-zinc-400"><Cpu size={20} /></a>
                </div>
             </div>
          </div>
-         <div className="max-w-5xl mx-auto mt-20 p-6 border border-zinc-900 bg-black rounded-2xl flex flex-col md:flex-row items-center gap-6 group hover:border-blue-900/50 transition-all text-zinc-400"><div className="p-4 bg-zinc-900/50 rounded-xl text-blue-500 group-hover:scale-110 transition-transform border border-zinc-800"><Shield size={32} /></div><div className="flex-1 text-center md:text-left"><div className="text-white font-bold text-sm uppercase tracking-widest mb-1">{t.footer.proof}</div><p className="text-[10px] text-zinc-500 max-w-xl leading-relaxed">{t.footer.proof_desc}</p></div><a href="https://viewblock.io/arweave/tx/BJ5GVAQBUXtv21jIEvuyqTsv9t93j7rlG47Lwcmtdu8" target="_blank" className="px-6 py-2 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] font-mono text-zinc-300 hover:bg-white hover:text-black transition-all shadow-lg">TX: BJ5GVAQ...du8</a></div>
       </footer>
     </div>
   );

@@ -2,25 +2,6 @@
 
 [English README](./README_EN.md)
 
-<p align="center">
-  <a href="https://star-history.com/#chmod777john/agent-wechat&Date">
-    <img src="https://api.star-history.com/svg?repos=chmod777john/agent-wechat&type=Date" alt="Star History Chart" width="520" />
-  </a>
-</p>
-
-[![Demo](assets/image.jpg)](https://www.bilibili.com/video/BV1X163BQE5c/?share_source=copy_web&vd_source=e0705640ea2f51669a392fb07684e286)
-
-## 🎬 视频【开源版 Kimi-K2.5 蜂群多 Agent】
-- Demo：
-<video src="https://github.com/user-attachments/assets/4ebd88c6-bbdb-4714-87a5-54d1fed08db8" width="100%" controls></video>
-- 详情视频： https://www.bilibili.com/video/BV1X163BQE5c/?share_source=copy_web&vd_source=e0705640ea2f51669a392fb07684e286
-
-## 加入微信群
-<img src="./assets/qrcode.png" alt="WeChat QR" width="240" />
-
-## 知乎文章
-https://zhuanlan.zhihu.com/p/2000736341479138182
-
 ## 优势
 - 任意动态创建 sub-agent
 - 可以向任意 agent 发送消息
@@ -28,7 +9,6 @@ https://zhuanlan.zhihu.com/p/2000736341479138182
 - 流式 graph 动态展现协作状态
 
 ## 对比
-~~值得注意的是，本项目在 Kimi-Swarm 和 Claude Team **之前**就已经**独立**提出蜂群模式。尤其是 Claude Team，仔细对比会发现它的主要思想(动态派遣、人与任意 Agent 通信)和本项目的设计**不谋而合**，某程度说明作者的眼光和设计已达到先进水平，在静态 LangGraph 框架大行其道的当时能独立做出来这样的设计，相当超前了。笔者当时就把项目白皮书放到区块链了，如果担心笔者在吹牛，可亲自去看[区块链链时间戳](https://viewblock.io/arweave/tx/BJ5GVAQBUXtv21jIEvuyqTsv9t93j7rlG47Lwcmtdu8).~~
 
 | 对比项 | Kimi-Swarm | Claude Agent Team | Swarm-IDE |
 | --- | --- | --- | --- |
@@ -38,7 +18,6 @@ https://zhuanlan.zhihu.com/p/2000736341479138182
 | 支持群聊模式 | ❌ | ❌ | ✅ |
 | 支持可视化 | ❌ | ❌ | ✅ |
 | 是否开源 | ❌ | ❌ | ✅ |
-| 发布时间 | 2026.1.27 | 2026.2.6 | 2026.1.2 |
 
 
 ## 界面设计
@@ -66,7 +45,7 @@ https://zhuanlan.zhihu.com/p/2000736341479138182
 
 本系统要运行在 Linux 上，如果你没有 Linux 系统的话或者装环境遇到问题的话，可以尝试使用 GitHub 提供的免费虚拟机。点击链接创建虚拟机后，就可以执行后面的指令了
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new?hide_repo_select=true&repo=chmod777john/swarm-ide)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new?hide_repo_select=true&repo=prokofiev-Argerich/agent-swarm-visualization)
 
 ### 方式二：本地运行
 ```
