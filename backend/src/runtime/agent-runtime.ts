@@ -299,13 +299,13 @@ async function getAgentTools() {
   return [...AGENT_TOOLS, ...mcpTools];
 }
 
-let cachedBashShell: string | null = null;
-function resolveBashShell(): string {
+let cachedBashShell: { shell: string; fallback: boolean } | null = null;
+function resolveBashShell(): { shell: string; fallback: boolean } {
   if (cachedBashShell) return cachedBashShell;
 
   const override = process.env.AGENT_SHELL?.trim();
   if (override) {
-    cachedBashShell = override;
+    cachedBashShell = { shell: override, fallback: false };
     return cachedBashShell;
   }
 
@@ -317,18 +317,18 @@ function resolveBashShell(): string {
     ];
     for (const candidate of candidates) {
       if (existsSync(candidate)) {
-        cachedBashShell = candidate;
+        cachedBashShell = { shell: candidate, fallback: false };
         return cachedBashShell;
       }
     }
     // Git Bash not found — fall back to cmd.exe so the tool at least
     // doesn't ENOENT. Agents will need POSIX commands to work; without
     // Git Bash on Windows, `ls`/`mkdir -p`/`&&` will fail individually.
-    cachedBashShell = process.env.ComSpec ?? "cmd.exe";
+    cachedBashShell = { shell: process.env.ComSpec ?? "cmd.exe", fallback: true };
     return cachedBashShell;
   }
 
-  cachedBashShell = "/bin/bash";
+  cachedBashShell = { shell: "/bin/bash", fallback: false };
   return cachedBashShell;
 }
 
@@ -812,16 +812,29 @@ class AgentRunner {
       const maxOutputKB = Number(args.maxOutputKB) > 0 ? Number(args.maxOutputKB) : 1024;
       const maxBuffer = Math.max(64 * 1024, Math.floor(maxOutputKB * 1024));
       const execAsync = promisify(exec);
+      const { shell, fallback } = resolveBashShell();
+      const fallbackWarning = fallback
+        ? "POSIX bash syntax may not work; falling back to platform default shell"
+        : undefined;
 
       try {
         const { stdout, stderr } = await execAsync(command, {
           cwd: finalCwd,
           timeout: timeoutMs,
           maxBuffer,
-          shell: resolveBashShell(),
+          shell,
         });
         emitToolDone(true);
-        return { ok: true, stdout, stderr, exitCode: 0, cwd: finalCwd };
+        return {
+          ok: true,
+          stdout,
+          stderr,
+          exitCode: 0,
+          cwd: finalCwd,
+          shell,
+          fallback,
+          ...(fallbackWarning ? { warning: fallbackWarning } : {}),
+        };
       } catch (err: any) {
         const stdout = err?.stdout ?? "";
         const stderr = err?.stderr ?? "";
@@ -835,6 +848,9 @@ class AgentRunner {
           exitCode,
           signal,
           cwd: finalCwd,
+          shell,
+          fallback,
+          ...(fallbackWarning ? { warning: fallbackWarning } : {}),
           error: String(err?.message ?? err),
         };
       }
