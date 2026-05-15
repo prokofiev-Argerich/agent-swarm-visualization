@@ -8,7 +8,7 @@ import { getMcpRegistry } from "./mcp";
 import { appendAgentHistorySnapshot, appendAgentLlmRequestRaw, appendAgentStreamEvent } from "./agent-logger";
 import { formatSkillPrompt, getSkillLoader } from "./skill-loader";
 import { exec } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
 
@@ -297,6 +297,39 @@ async function getAgentTools() {
   const mcp = await getMcpRegistry(BUILTIN_TOOL_NAMES, { loadTimeoutMs });
   const mcpTools = mcp.getToolDefinitions();
   return [...AGENT_TOOLS, ...mcpTools];
+}
+
+let cachedBashShell: string | null = null;
+function resolveBashShell(): string {
+  if (cachedBashShell) return cachedBashShell;
+
+  const override = process.env.AGENT_SHELL?.trim();
+  if (override) {
+    cachedBashShell = override;
+    return cachedBashShell;
+  }
+
+  if (process.platform === "win32") {
+    const candidates = [
+      "C:\\Program Files\\Git\\bin\\bash.exe",
+      "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+      "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        cachedBashShell = candidate;
+        return cachedBashShell;
+      }
+    }
+    // Git Bash not found — fall back to cmd.exe so the tool at least
+    // doesn't ENOENT. Agents will need POSIX commands to work; without
+    // Git Bash on Windows, `ls`/`mkdir -p`/`&&` will fail individually.
+    cachedBashShell = process.env.ComSpec ?? "cmd.exe";
+    return cachedBashShell;
+  }
+
+  cachedBashShell = "/bin/bash";
+  return cachedBashShell;
 }
 
 function getGlmConfig() {
@@ -785,7 +818,7 @@ class AgentRunner {
           cwd: finalCwd,
           timeout: timeoutMs,
           maxBuffer,
-          shell: "/bin/bash",
+          shell: resolveBashShell(),
         });
         emitToolDone(true);
         return { ok: true, stdout, stderr, exitCode: 0, cwd: finalCwd };
