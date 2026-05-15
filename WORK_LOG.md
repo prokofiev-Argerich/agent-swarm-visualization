@@ -103,9 +103,62 @@ IM 界面新增删除按钮，支持删除 agent、group 和 workspace。
 | 文件 | 说明 |
 |---|---|
 | `backend/src/lib/llm/types.ts` | LlmChunk、AssembledState、TokenUsage |
-| `backend/src/lib/llm/assembler.ts` | 统一 StreamAssembler（替代 GLMStreamAssembler + OpenAIStreamAssembler） |
+| `backend/src/lib/llm/assembler.ts` | 统一 StreamAssembler(替代 GLMStreamAssembler + OpenAIStreamAssembler) |
 | `backend/src/lib/llm/sse.ts` | parseSSEJsonLines |
 | `backend/src/lib/llm/index.ts` | 统一导出 |
+
+### 阶段 5：API facade + 路由鲁棒性修复
+
+**起因**：Next.js 16 + Turbopack 在 dev 下对嵌套动态路由(`[id]/sub/`)首次请求可能返回 404,production build 正常。
+
+**架构**：
+- 抽离 shared handler 到 `src/server/handlers/*`
+- 同时暴露扁平路由 + 嵌套路由,两者复用同一 handler
+- 客户端统一走 `apiPaths`,只用扁平路由
+- 嵌套路由作为 production 兼容 alias
+
+| 文件 | 说明 |
+|---|---|
+| `backend/src/server/handlers/workspace-defaults.ts` | `ensureWorkspaceDefaults` 包装 |
+| `backend/src/server/handlers/agent-context-stream.ts` | SSE 流包装 |
+| `backend/src/server/handlers/group-messages.ts` | list + send 包装 |
+| `backend/app/api/workspace-defaults/route.ts` | 扁平路由 |
+| `backend/app/api/agent-context-stream/route.ts` | 扁平路由 |
+| `backend/app/api/group-messages/route.ts` | 扁平路由 |
+| `backend/src/lib/api-paths.ts` | 客户端路由常量 |
+| `backend/scripts/smoke-api.mjs` | API smoke test(区分 Next.js 404 vs handler JSON 404) |
+| `backend/package.json` | 新增 `smoke:api` script |
+| `backend/tsconfig.json` | 新增 `@/server/*` path alias |
+
+**Drizzle migration 修复**：
+- `backend/src/db/migrations/0000_init.sql`：`---> statement-breakpoint`(3 dash) → `--> statement-breakpoint`(2 dash)。原版会让 migrator split 后留下孤儿 `-`,触发 `syntax error at or near "-"`
+- `backend/src/db/init.ts`：删掉 `CREATE TABLE drizzle_migrations`(死代码,drizzle 自己用 `drizzle.__drizzle_migrations`)
+
+**前端迁移**：`backend/app/im/page.tsx` 6 处 fetch 全部走 `apiPaths`,移除 hardcoded URL
+
+**ESLint 配置(只配置,不修代码)**：
+- 新增 `backend/eslint.config.mjs`：ESLint v9 flat config + `eslint-config-next/core-web-vitals`
+- 之前 `npm run lint` 因缺 `eslint.config.*` 直接报错,现已能运行
+
+**本轮验证状态**：
+- `npm run smoke:api` passed
+- `npx tsc --noEmit` clean
+- `npm run lint` now runs, but fails on pre-existing lint issues:
+  - 4 errors in `app/im/page.tsx`(全部 `react-hooks/set-state-in-effect`,React 19 新规则,源自旧 useEffect)
+  - 15 warnings across old files(主要是 unused eslint-disable + exhaustive-deps)
+- 本轮新建/修改文件无 lint 问题。本轮可以交付。
+
+---
+
+## 阶段 6:lint cleanup(待办,独立立项)
+
+> 本轮不动 lint violations。原因:4 个 errors 要改 useEffect 行为,风险高于本轮 route 重构。
+
+执行顺序:
+1. 先修 `app/im/page.tsx` 的 4 个 `react-hooks/set-state-in-effect` errors(行 1022 / 1090 / 1235 / 1241)
+2. 每个 useEffect 单独改,避免批量重构
+3. errors clean 后再处理 `exhaustive-deps` warnings
+4. 最后删 unused eslint-disable 和修 config 文件 anonymous default export
 
 ---
 
