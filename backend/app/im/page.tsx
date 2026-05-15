@@ -193,6 +193,19 @@ function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
+function toTimestamp(value: Date | string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
 export default function IMPage() {
   return (
     <Suspense fallback={<div style={{ padding: 24 }}>Loading...</div>}>
@@ -301,7 +314,7 @@ function IMPageInner() {
     }
 
     const byCreatedAt = (a: AgentMeta, b: AgentMeta) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      toTimestamp(a.createdAt) - toTimestamp(b.createdAt);
 
     for (const list of childrenById.values()) list.sort(byCreatedAt);
     roots.sort(byCreatedAt);
@@ -476,7 +489,7 @@ function IMPageInner() {
     const childrenById = new Map<string, AgentMeta[]>();
     const roots: AgentMeta[] = [];
     const byCreatedAt = (a: AgentMeta, b: AgentMeta) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      toTimestamp(a.createdAt) - toTimestamp(b.createdAt);
 
     for (const agent of agents) {
       if (agent.role === "human") continue;
