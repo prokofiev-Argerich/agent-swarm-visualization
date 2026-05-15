@@ -1,6 +1,5 @@
 import { store } from "@/lib/storage";
-import { GLMStreamAssembler, parseSSEJsonLines } from "@/lib/glm-stream";
-import { OpenAIStreamAssembler } from "@/lib/openai-stream";
+import { StreamAssembler, parseSSEJsonLines } from "@/lib/llm";
 
 import { AgentEventBus } from "./event-bus";
 import { createDeferred, safeJsonParse } from "./utils";
@@ -1152,7 +1151,7 @@ class AgentRunner {
       throw new Error(`OpenRouter upstream error: ${upstream.status} ${text}`);
     }
 
-    const assembler = new OpenAIStreamAssembler();
+    const assembler = new StreamAssembler();
     let prev = assembler.snapshot();
     let assistantText = "";
     let assistantThinking = "";
@@ -1303,7 +1302,7 @@ class AgentRunner {
       throw new Error(`GLM upstream error: ${upstream.status} ${text}`);
     }
 
-    const assembler = new GLMStreamAssembler();
+    const assembler = new StreamAssembler();
     let prev = assembler.snapshot();
     let assistantText = "";
     let assistantThinking = "";

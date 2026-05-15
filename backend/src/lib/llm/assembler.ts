@@ -1,46 +1,13 @@
-import type { AssembledToolCall, TokenUsage } from "./glm-stream";
+import type { AssembledState, AssembledToolCall, LlmChunk, TokenUsage } from "./types";
 
-type OpenAIChunk = {
-  choices?: Array<{
-    delta?: {
-      content?: string | null;
-      reasoning?: string;
-      reasoning_content?: string;
-      tool_calls?: Array<{
-        index?: number;
-        id?: string;
-        type?: string;
-        function?: {
-          name?: string;
-          arguments?: string;
-        };
-      }>;
-    };
-    finish_reason?: string | null;
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-};
-
-export type OpenAIAssembledState = {
-  reasoningContent: string;
-  content: string;
-  toolCalls: AssembledToolCall[];
-  finishReason?: string | null;
-  usage?: TokenUsage;
-};
-
-export class OpenAIStreamAssembler {
+export class StreamAssembler {
   private reasoningContent = "";
   private content = "";
   private toolCalls = new Map<number, AssembledToolCall>();
   private finishReason: string | null | undefined = undefined;
   private usage?: TokenUsage;
 
-  push(chunk: OpenAIChunk): OpenAIAssembledState {
+  push(chunk: LlmChunk): AssembledState {
     const choice = chunk.choices?.[0];
     const delta = choice?.delta;
 
@@ -81,7 +48,7 @@ export class OpenAIStreamAssembler {
     return this.snapshot();
   }
 
-  snapshot(): OpenAIAssembledState {
+  snapshot(): AssembledState {
     return {
       reasoningContent: this.reasoningContent,
       content: this.content,

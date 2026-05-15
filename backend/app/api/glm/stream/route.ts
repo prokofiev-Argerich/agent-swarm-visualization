@@ -1,7 +1,6 @@
 export const runtime = "nodejs";
 
-import { GLMStreamAssembler, parseSSEJsonLines } from "@/lib/glm-stream";
-import { OpenAIStreamAssembler } from "@/lib/openai-stream";
+import { StreamAssembler, parseSSEJsonLines } from "@/lib/llm";
 
 type LlmProvider = "glm" | "openrouter";
 
@@ -85,7 +84,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const assembler = new OpenAIStreamAssembler();
+    const assembler = new StreamAssembler();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
@@ -155,7 +154,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const assembler = new GLMStreamAssembler();
+  const assembler = new StreamAssembler();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
