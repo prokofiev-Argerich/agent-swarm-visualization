@@ -1,6 +1,7 @@
 {
-  "dependencies": {},
   "devDependencies": {
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
     "mintlify": "^4.2.256"
   }
 }
