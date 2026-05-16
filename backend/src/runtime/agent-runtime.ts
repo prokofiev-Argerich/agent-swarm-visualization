@@ -901,6 +901,13 @@ class AgentRunner {
         emitToolDone(false);
         return { ok: false, error: "Missing to" };
       }
+      if (!isUuid(to)) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `to must be a UUID agent_id (got '${to.slice(0, 64)}'). Use list_agents to discover valid agent_ids.`,
+        };
+      }
       if (!content) {
         emitToolDone(false);
         return { ok: false, error: "Missing content" };
@@ -950,6 +957,13 @@ class AgentRunner {
         emitToolDone(false);
         return { ok: false, error: "Missing groupId" };
       }
+      if (!isUuid(groupId)) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `groupId must be a UUID (got '${groupId.slice(0, 64)}'). Use list_groups to find valid groupIds.`,
+        };
+      }
       const members = await store.listGroupMemberIds({ groupId });
       if (!members.includes(this.agentId)) {
         emitToolDone(false);
@@ -965,6 +979,14 @@ class AgentRunner {
       if (memberIds.length < 2) {
         emitToolDone(false);
         return { ok: false, error: "memberIds must have >= 2 members" };
+      }
+      const invalidIds = memberIds.filter((id) => !isUuid(id));
+      if (invalidIds.length > 0) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `memberIds must all be UUID agent_ids. Invalid: ${invalidIds.map((id) => `'${id.slice(0, 64)}'`).join(", ")}. Use list_agents to discover valid agent_ids.`,
+        };
       }
       if (!memberIds.includes(this.agentId)) {
         memberIds.push(this.agentId);
@@ -1022,6 +1044,13 @@ class AgentRunner {
         emitToolDone(false);
         return { ok: false, error: "Missing groupId" };
       }
+      if (!isUuid(groupId)) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `groupId must be a UUID (got '${groupId.slice(0, 64)}'). Use list_groups to find valid groupIds.`,
+        };
+      }
       if (!content) {
         emitToolDone(false);
         return { ok: false, error: "Missing content" };
@@ -1073,6 +1102,13 @@ class AgentRunner {
         emitToolDone(false);
         return { ok: false, error: "Missing toAgentId" };
       }
+      if (!isUuid(toAgentId)) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `toAgentId must be a UUID agent_id (got '${toAgentId.slice(0, 64)}'). Use list_agents to discover valid agent_ids.`,
+        };
+      }
       if (!content) {
         emitToolDone(false);
         return { ok: false, error: "Missing content" };
@@ -1118,6 +1154,13 @@ class AgentRunner {
       if (!groupId) {
         emitToolDone(false);
         return { ok: false, error: "Missing groupId" };
+      }
+      if (!isUuid(groupId)) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `groupId must be a UUID (got '${groupId.slice(0, 64)}'). Use list_groups to find valid groupIds.`,
+        };
       }
       const members = await store.listGroupMemberIds({ groupId });
       if (!members.includes(this.agentId)) {
