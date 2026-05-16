@@ -2,7 +2,7 @@ import { store } from "@/lib/storage";
 import { StreamAssembler, parseSSEJsonLines } from "@/lib/llm";
 
 import { AgentEventBus } from "./event-bus";
-import { createDeferred, safeJsonParse } from "./utils";
+import { createDeferred, isUuid, safeJsonParse } from "./utils";
 import { getWorkspaceUIBus } from "./ui-bus";
 import { getMcpRegistry } from "./mcp";
 import { appendAgentHistorySnapshot, appendAgentLlmRequestRaw, appendAgentStreamEvent } from "./agent-logger";
@@ -740,6 +740,13 @@ class AgentRunner {
       if (!fileId) {
         emitToolDone(false);
         return { ok: false, error: "Missing fileId" };
+      }
+      if (!isUuid(fileId)) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: `fileId must be a UUID (got '${fileId.slice(0, 64)}'). Use a fileId from the workspace's Uploaded Files list, never a filename or path. For source files, use the bash tool to cat them.`,
+        };
       }
 
       const fileMeta = await store.getFile({ fileId, workspaceId });
