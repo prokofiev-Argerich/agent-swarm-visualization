@@ -9,7 +9,6 @@ import { Streamdown } from "streamdown";
 import { createCodePlugin } from "@streamdown/code";
 import { mermaid } from "@streamdown/mermaid";
 import { IMShell } from "./IMShell";
-import { IMMessageList } from "./IMMessageList";
 import { IMHistoryList } from "./IMHistoryList";
 import { FilePanel } from "./components/FilePanel";
 import { Composer } from "./components/Composer";
@@ -60,7 +59,27 @@ type Message = {
   content: string;
   contentType: string;
   sendTime: string;
+  phaseId?: UUID;
 };
+
+type PhaseSummary = {
+  id: UUID;
+  phaseId: UUID;
+  title: string;
+  summary: string;
+  messageCount: number;
+  agents: string[];
+  conflicts: number;
+  decisions: number;
+  openQuestions: number;
+  createdByAgentId: UUID;
+  createdAt: string;
+};
+
+type DisplayItem =
+  | { kind: "message"; message: Message }
+  | { kind: "phase-card"; summary: PhaseSummary; expanded: boolean }
+  | { kind: "loading-older" };
 
 type FileItem = {
   fileId: UUID;
@@ -179,7 +198,9 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText} ${text}`);
+    // eslint-disable-next-line no-console
+    console.error("API failed", { url: path, status: res.status, body: text.slice(0, 500) });
+    throw new Error(`${res.status} ${res.statusText} ${text.slice(0, 200)}`);
   }
   return (await res.json()) as T;
 }
@@ -254,9 +275,17 @@ function IMPageInner() {
   const [collapsedAgents, setCollapsedAgents] = useState<Record<string, boolean>>({});
   const [files, setFiles] = useState<FileItem[]>([]);
   const [showFilesPanel, setShowFilesPanel] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [phaseSummaries, setPhaseSummaries] = useState<PhaseSummary[]>([]);
+  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
+  const [phaseMessages, setPhaseMessages] = useState<Record<string, Message[]>>({});
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [activePhaseId, setActivePhaseId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const activeGroupIdRef = useRef<string | null>(null);
   const streamAgentIdRef = useRef<string | null>(null);
@@ -289,6 +318,88 @@ function IMPageInner() {
     for (const a of agents) map.set(a.id, a.role);
     return map;
   }, [agents]);
+
+  const completedPhaseIds = useMemo(() => {
+    return new Set(phaseSummaries.map((p) => p.phaseId));
+  }, [phaseSummaries]);
+
+  const displayItems = useMemo((): DisplayItem[] => {
+    const items: DisplayItem[] = [];
+    const seenPhases = new Set<string>();
+    const seenMsgIds = new Set<string>();
+    const emitMsg = (m: Message) => {
+      if (!seenMsgIds.has(m.id)) {
+        seenMsgIds.add(m.id);
+        items.push({ kind: "message", message: m });
+      }
+    };
+
+    // group consecutive messages by phaseId
+    let i = 0;
+    while (i < messages.length) {
+      const m = messages[i]!;
+      const pid = m.phaseId ?? null;
+
+      if (!pid) {
+        emitMsg(m);
+        i++;
+        continue;
+      }
+
+      // collect all consecutive messages with same phaseId
+      const block: Message[] = [];
+      while (i < messages.length && messages[i]!.phaseId === pid) {
+        block.push(messages[i]!);
+        i++;
+      }
+
+      const isCompleted = completedPhaseIds.has(pid);
+      const isExpanded = expandedPhases.has(pid);
+
+      if (!isCompleted) {
+        // active phase: always show messages inline
+        for (const bm of block) emitMsg(bm);
+      } else if (isExpanded) {
+        // show phase summary card then messages from phaseMessages or block
+        const summary = phaseSummaries.find((p) => p.phaseId === pid);
+        if (summary) {
+          items.push({ kind: "phase-card", summary, expanded: true });
+        }
+        const pm = phaseMessages[pid];
+        if (pm && pm.length > 0) {
+          for (const pmMsg of pm) emitMsg(pmMsg);
+        } else {
+          for (const bm of block) emitMsg(bm);
+        }
+      } else {
+        // collapsed completed phase: show summary card only
+        const summary = phaseSummaries.find((p) => p.phaseId === pid);
+        if (summary) {
+          items.push({ kind: "phase-card", summary, expanded: false });
+        } else {
+          // no summary yet, fallback to showing messages
+          for (const bm of block) emitMsg(bm);
+        }
+      }
+      seenPhases.add(pid);
+    }
+
+    // add phase summaries for phases that have no messages in the current page
+    for (const s of phaseSummaries) {
+      if (!seenPhases.has(s.phaseId)) {
+        const isExpanded = expandedPhases.has(s.phaseId);
+        items.unshift({ kind: "phase-card", summary: s, expanded: isExpanded });
+        if (isExpanded) {
+          const pm = phaseMessages[s.phaseId];
+          if (pm && pm.length > 0) {
+            for (const pmMsg of pm) emitMsg(pmMsg);
+          }
+        }
+      }
+    }
+
+    return items;
+  }, [messages, phaseSummaries, expandedPhases, phaseMessages, completedPhaseIds]);
 
   const vizLayout = useMemo(() => {
     const width = Math.max(1, vizSize.width);
@@ -711,6 +822,120 @@ function IMPageInner() {
     if (!opts?.silent) setStatus("idle");
   }, []);
 
+  const loadPhaseSummaries = useCallback(async (groupId: string) => {
+    try {
+      const { phases } = await api<{ phases: PhaseSummary[] }>(
+        apiPaths.phaseSummaries(groupId)
+      );
+      setPhaseSummaries(phases);
+      // active phase is the first one with no active status (we don't track active here)
+    } catch {
+      setPhaseSummaries([]);
+    }
+  }, []);
+
+  const loadInitialMessages = useCallback(
+    async (
+      s: WorkspaceDefaults,
+      groupId: string,
+      opts?: { markRead?: boolean; silent?: boolean; skipGroupRefresh?: boolean }
+    ) => {
+      if (!opts?.silent) setStatus("messages");
+      const result = await api<{
+        messages: Message[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      }>(
+        apiPaths.groupMessages(groupId, {
+          markRead: opts?.markRead ?? true,
+          readerId: s.humanAgentId,
+          limit: 50,
+        })
+      );
+      setMessages(result.messages);
+      setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
+      setExpandedPhases(new Set());
+      setPhaseMessages({});
+      if (!opts?.silent) setStatus("idle");
+      if (!opts?.skipGroupRefresh) {
+        void refreshGroups(s, { silent: opts?.silent });
+      }
+      void loadPhaseSummaries(groupId);
+      queueMicrotask(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+    },
+    [refreshGroups, loadPhaseSummaries]
+  );
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!session || !activeGroupId || !nextCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const result = await api<{
+        messages: Message[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      }>(
+        apiPaths.groupMessages(activeGroupId, {
+          limit: 50,
+          before: nextCursor,
+        })
+      );
+      // Prepend older messages, maintain scroll position
+      const container = messagesContainerRef.current;
+      const prevHeight = container?.scrollHeight ?? 0;
+      setMessages((prev) => [...result.messages, ...prev]);
+      setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
+      // restore scroll position after prepend
+      requestAnimationFrame(() => {
+        if (container) {
+          const newHeight = container.scrollHeight;
+          container.scrollTop = newHeight - prevHeight;
+        }
+      });
+    } catch {
+      // ignore
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [activeGroupId, loadingOlder, nextCursor, session]);
+
+  const loadPhaseMessages = useCallback(
+    async (phaseId: string) => {
+      if (!activeGroupId) return;
+      const result = await api<{
+        messages: Message[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      }>(
+        apiPaths.groupMessages(activeGroupId, {
+          limit: 100,
+          phaseId,
+        })
+      );
+      setPhaseMessages((prev) => ({ ...prev, [phaseId]: result.messages }));
+    },
+    [activeGroupId]
+  );
+
+  const togglePhaseExpand = useCallback(
+    (phaseId: string) => {
+      setExpandedPhases((prev) => {
+        const next = new Set(prev);
+        if (next.has(phaseId)) {
+          next.delete(phaseId);
+        } else {
+          next.add(phaseId);
+          void loadPhaseMessages(phaseId);
+        }
+        return next;
+      });
+    },
+    [loadPhaseMessages]
+  );
+
+  // SSE-triggered refresh: merge new messages with existing ones
   const refreshMessages = useCallback(
     async (
       s: WorkspaceDefaults,
@@ -718,20 +943,31 @@ function IMPageInner() {
       opts?: { markRead?: boolean; silent?: boolean; skipGroupRefresh?: boolean }
     ) => {
       if (!opts?.silent) setStatus("messages");
-      const { messages } = await api<{ messages: Message[] }>(
+      const result = await api<{
+        messages: Message[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      }>(
         apiPaths.groupMessages(groupId, {
           markRead: opts?.markRead ?? true,
           readerId: s.humanAgentId,
+          limit: 50,
         })
       );
-      setMessages(messages);
+      // Merge: keep existing messages, add new ones by id
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const newMsgs = result.messages.filter((m) => !existingIds.has(m.id));
+        return [...prev, ...newMsgs];
+      });
       if (!opts?.silent) setStatus("idle");
       if (!opts?.skipGroupRefresh) {
         void refreshGroups(s, { silent: opts?.silent });
       }
+      void loadPhaseSummaries(groupId);
       queueMicrotask(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
     },
-    [refreshGroups]
+    [refreshGroups, loadPhaseSummaries]
   );
 
   const pushVizEvent = useCallback(
@@ -998,8 +1234,9 @@ function IMPageInner() {
     setStatus("send");
     setError(null);
 
+    const optimisticId = `optimistic-${Date.now()}`;
     const optimistic: Message = {
-      id: `optimistic-${Date.now()}`,
+      id: optimisticId,
       senderId: session.humanAgentId,
       content: text,
       contentType: "text",
@@ -1010,16 +1247,23 @@ function IMPageInner() {
     queueMicrotask(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
 
     try {
-      await api(apiPaths.groupMessages(activeGroupId), {
+      const result = await api<{ id: string; sendTime: string }>(apiPaths.groupMessages(activeGroupId), {
         method: "POST",
         body: JSON.stringify({ senderId: session.humanAgentId, content: text, contentType: "text" }),
       });
-    } finally {
-      // keep going
+      // replace optimistic with real
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === optimisticId
+            ? { ...m, id: result.id, sendTime: result.sendTime }
+            : m
+        )
+      );
+    } catch {
+      // keep optimistic on error
     }
 
     setStatus("idle");
-    void refreshMessages(session, activeGroupId, { markRead: false });
     void refreshGroups(session);
   }, [
     activeGroupId,
@@ -1027,7 +1271,6 @@ function IMPageInner() {
     draft,
     refreshAgents,
     refreshGroups,
-    refreshMessages,
     session,
   ]);
 
@@ -1251,10 +1494,23 @@ function IMPageInner() {
 
   useEffect(() => {
     if (!activeGroupId || !session) return;
-    void refreshMessages(session, activeGroupId, { markRead: true }).catch((e) =>
+    void loadInitialMessages(session, activeGroupId, { markRead: true }).catch((e) =>
       setError(e instanceof Error ? e.message : String(e))
     );
-  }, [activeGroupId, refreshMessages, session]);
+  }, [activeGroupId, loadInitialMessages, session]);
+
+  // scroll handler for loading older messages
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const onScroll = () => {
+      if (container.scrollTop < 80 && hasMore && !loadingOlder) {
+        void loadOlderMessages();
+      }
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [hasMore, loadingOlder, loadOlderMessages]);
 
   useEffect(() => {
     return () => esRef.current?.close();
@@ -1864,15 +2120,103 @@ function IMPageInner() {
             ? `${Math.max(0, Math.round(midChatHeight))}px ${MID_SPLITTER_SIZE}px minmax(${MID_GRAPH_MIN_HEIGHT}px, 1fr)`
             : `1fr ${MID_SPLITTER_SIZE}px minmax(${MID_GRAPH_MIN_HEIGHT}px, 1fr)`
         }}>
-          <div className="chat">
-            <IMMessageList
-              messages={messages}
-              humanAgentId={session?.humanAgentId ?? null}
-              agentRoleById={agentRoleById}
-              fmtTime={fmtTime}
-              renderContent={(content) => <MarkdownContent content={content} />}
-              cx={cx}
-            />
+          <div className="chat" ref={messagesContainerRef}>
+            {loadingOlder && (
+              <div style={{ textAlign: "center", padding: 12, color: "#a1a1aa", fontSize: 12 }}>
+                Loading older messages...
+              </div>
+            )}
+            {displayItems.map((item, idx) => {
+              if (item.kind === "loading-older") {
+                return (
+                  <div key="loading-older" style={{ textAlign: "center", padding: 12, color: "#a1a1aa", fontSize: 12 }}>
+                    Loading older messages...
+                  </div>
+                );
+              }
+              if (item.kind === "phase-card") {
+                const s = item.summary;
+                const agentList = s.agents.length > 0 ? s.agents.join(" / ") : "";
+                return (
+                  <div
+                    key={`phase-${s.phaseId}`}
+                    style={{
+                      marginBottom: 12,
+                      border: "1px solid #27272a",
+                      borderRadius: 12,
+                      background: "#08080a",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <button
+                      onClick={() => togglePhaseExpand(s.phaseId)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "10px 14px",
+                        background: "transparent",
+                        border: "none",
+                        color: "#e4e4e7",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
+                        <div style={{ fontSize: 11, color: "#a1a1aa", marginTop: 4 }}>
+                          {s.messageCount} msgs
+                          {agentList ? ` · ${agentList}` : ""}
+                          {s.conflicts > 0 ? ` · ${s.conflicts} conflicts` : ""}
+                          {s.decisions > 0 ? ` · ${s.decisions} decisions` : ""}
+                        </div>
+                      </div>
+                      <span style={{ color: "#a1a1aa", fontSize: 12, flexShrink: 0 }}>
+                        {item.expanded ? "Collapse" : "Expand"}
+                      </span>
+                    </button>
+                    {item.expanded && s.summary && (
+                      <div
+                        style={{
+                          padding: "8px 14px 12px",
+                          fontSize: 12,
+                          color: "#a1a1aa",
+                          borderTop: "1px solid #18181b",
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {s.summary}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              // kind === "message"
+              const m = item.message;
+              const isMe = m.senderId === (session?.humanAgentId ?? null);
+              const senderRole =
+                agentRoleById.get(m.senderId) ??
+                (isMe ? "human" : m.senderId.slice(0, 8));
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: isMe ? "flex-end" : "flex-start",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div className={cx("bubble", isMe ? "me" : "other")}>
+                    <div className="bubble-meta">
+                      {fmtTime(m.sendTime)} • {senderRole}
+                    </div>
+                    <MarkdownContent content={m.content} />
+                  </div>
+                </div>
+              );
+            })}
             <div ref={bottomRef} />
           </div>
 

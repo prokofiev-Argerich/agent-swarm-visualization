@@ -54,6 +54,47 @@ export const messages = pgTable("messages", {
   contentType: text("content_type").notNull(),
   content: text("content").notNull(),
   sendTime: timestamp("send_time", { withTimezone: true }).notNull(),
+  phaseId: uuid("phase_id"),
+});
+
+export const workflowPhases = pgTable("workflow_phases", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  groupId: uuid("group_id")
+    .notNull()
+    .references(() => groups.id),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("active"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  summaryMessageId: uuid("summary_message_id"),
+  metadata: text("metadata"),
+});
+
+export const phaseSummaries = pgTable("phase_summaries", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  groupId: uuid("group_id")
+    .notNull()
+    .references(() => groups.id),
+  phaseId: uuid("phase_id")
+    .notNull()
+    .references(() => workflowPhases.id),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  messageCount: integer("message_count").notNull().default(0),
+  agents: text("agents"),
+  conflicts: integer("conflicts").notNull().default(0),
+  decisions: integer("decisions").notNull().default(0),
+  openQuestions: integer("open_questions").notNull().default(0),
+  createdByAgentId: uuid("created_by_agent_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  metadata: text("metadata"),
 });
 
 export const files = pgTable("files", {

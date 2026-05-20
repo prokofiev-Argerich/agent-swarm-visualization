@@ -6,19 +6,33 @@ export async function listGroupMessagesResponse(opts: {
   groupId: string;
   markRead?: boolean;
   readerId?: string | null;
+  limit?: number;
+  before?: string;
+  phaseId?: string;
 }): Promise<Response> {
   const trimmed = opts.groupId?.trim();
   if (!trimmed) {
     return Response.json({ error: "Missing groupId" }, { status: 400 });
   }
 
-  const messages = await store.listMessages({ groupId: trimmed });
+  try {
+    const result = await store.listGroupMessagesPaged({
+      groupId: trimmed,
+      limit: opts.limit ?? 50,
+      before: opts.before ?? undefined,
+      phaseId: opts.phaseId ?? undefined,
+    });
 
-  if (opts.markRead && opts.readerId) {
-    await store.markGroupRead({ groupId: trimmed, readerId: opts.readerId });
+    if (opts.markRead && opts.readerId) {
+      await store.markGroupRead({ groupId: trimmed, readerId: opts.readerId });
+    }
+
+    return Response.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[listGroupMessages] 500", { groupId: trimmed, error: String(err) });
+    throw err;
   }
-
-  return Response.json({ messages });
 }
 
 export async function sendGroupMessageResponse(opts: {
@@ -33,11 +47,15 @@ export async function sendGroupMessageResponse(opts: {
     return Response.json({ error: "Missing senderId or content" }, { status: 400 });
   }
 
+  // auto-bind active phase
+  const activePhase = await store.getActiveWorkflowPhase({ groupId: trimmed });
+
   const result = await store.sendMessage({
     groupId: trimmed,
     senderId: opts.body.senderId,
     content: opts.body.content,
     contentType: opts.body.contentType ?? "text",
+    phaseId: activePhase?.id,
   });
 
   const memberIds = await store.listGroupMemberIds({ groupId: trimmed });

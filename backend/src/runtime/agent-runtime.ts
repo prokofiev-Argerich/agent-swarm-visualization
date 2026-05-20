@@ -287,6 +287,47 @@ const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "start_phase",
+      description:
+        "Start a workflow phase in a group. Subsequent messages in this group are automatically tagged with the phase.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          groupId: { type: "string", description: "Target group id" },
+          type: {
+            type: "string",
+            description: "Phase type: prd_parse, independent_review, full_mesh_round_1, conflict_resolution, draft_plan, human_gate, execution, testing, summary",
+          },
+          title: { type: "string", description: "Human-readable phase title" },
+        },
+        required: ["groupId", "type", "title"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "end_phase",
+      description:
+        "End the active phase in a group and generate a summary. Returns the phase summary id.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          groupId: { type: "string", description: "Target group id" },
+          summary: { type: "string", description: "Brief summary of what happened in this phase" },
+          decisions: { type: "number", description: "Number of decisions made in this phase" },
+          conflicts: { type: "number", description: "Number of conflicts found" },
+          openQuestions: { type: "number", description: "Number of unresolved open questions" },
+        },
+        required: ["groupId", "summary"],
+      },
+    },
+  },
 ] as const;
 
 const BUILTIN_TOOL_NAMES = new Set(AGENT_TOOLS.map((tool) => tool.function.name));
@@ -1062,11 +1103,15 @@ class AgentRunner {
         return { ok: false, error: "Access denied" };
       }
 
+      // auto-bind active phase
+      const activePhase = await store.getActiveWorkflowPhase({ groupId });
+
       const result = await store.sendMessage({
         groupId,
         senderId: this.agentId,
         content,
         contentType: args.contentType ?? "text",
+        phaseId: activePhase?.id,
       });
 
       getWorkspaceUIBus().emit(workspaceId, {
@@ -1170,6 +1215,116 @@ class AgentRunner {
       const messages = await store.listMessages({ groupId });
       emitToolDone(true);
       return { ok: true, messages };
+    }
+
+    if (name === "start_phase") {
+      const args = safeJsonParse<{ groupId?: string; type?: string; title?: string }>(
+        input.call.argumentsText,
+        {}
+      );
+      const groupId = (args.groupId ?? "").trim();
+      const phaseType = (args.type ?? "").trim();
+      const title = (args.title ?? phaseType).trim();
+      if (!groupId) {
+        emitToolDone(false);
+        return { ok: false, error: "Missing groupId" };
+      }
+      if (!phaseType) {
+        emitToolDone(false);
+        return { ok: false, error: "Missing type" };
+      }
+
+      const active = await store.getActiveWorkflowPhase({ groupId });
+      if (active) {
+        emitToolDone(false);
+        return {
+          ok: false,
+          error: "An active phase already exists. Call end_phase before starting a new phase.",
+          activePhaseId: active.id,
+          activePhaseType: active.type,
+          activePhaseName: active.name,
+        };
+      }
+
+      const phase = await store.createWorkflowPhase({
+        groupId,
+        name: title,
+        type: phaseType,
+      });
+
+      // announce phase start as a system message
+      await store.sendMessage({
+        groupId,
+        senderId: this.agentId,
+        content: `Phase started: **${title}** (${phaseType})`,
+        contentType: "phase_start",
+        phaseId: phase.id,
+      });
+
+      emitToolDone(true);
+      return { ok: true, phaseId: phase.id, type: phaseType, title };
+    }
+
+    if (name === "end_phase") {
+      const args = safeJsonParse<{
+        groupId?: string;
+        summary?: string;
+        decisions?: number;
+        conflicts?: number;
+        openQuestions?: number;
+      }>(input.call.argumentsText, {});
+      const groupId = (args.groupId ?? "").trim();
+      const summary = (args.summary ?? "").trim();
+      if (!groupId) {
+        emitToolDone(false);
+        return { ok: false, error: "Missing groupId" };
+      }
+      if (!summary) {
+        emitToolDone(false);
+        return { ok: false, error: "Missing summary" };
+      }
+
+      const active = await store.getActiveWorkflowPhase({ groupId });
+      if (!active) {
+        emitToolDone(false);
+        return { ok: false, error: "No active phase to end" };
+      }
+
+      await store.endWorkflowPhase({ phaseId: active.id });
+
+      // count messages in this phase
+      const page = await store.listGroupMessagesPaged({
+        groupId,
+        phaseId: active.id,
+        limit: 200,
+      });
+      const messageCount = page.messages.length;
+      const agentSet = new Set(page.messages.map((m) => m.senderId));
+
+      const phaseSummary = await store.createPhaseSummary({
+        groupId,
+        phaseId: active.id,
+        title: active.name,
+        summary,
+        messageCount,
+        agents: Array.from(agentSet),
+        conflicts: args.conflicts ?? 0,
+        decisions: args.decisions ?? 0,
+        openQuestions: args.openQuestions ?? 0,
+        createdByAgentId: this.agentId,
+      });
+
+      // announce phase end with summary
+      await store.sendMessage({
+        groupId,
+        senderId: this.agentId,
+        content: `Phase completed: **${active.name}**\n\n${summary}\n\n${messageCount} msgs · ${agentSet.size} agents · ${args.decisions ?? 0} decisions · ${args.conflicts ?? 0} conflicts`,
+        contentType: "phase_summary",
+        phaseId: active.id,
+      });
+
+      emitToolDone(true);
+      return { ok: true, phaseId: active.id, summaryId: phaseSummary.id };
     }
 
     const mcp = await getMcpRegistry(BUILTIN_TOOL_NAMES);

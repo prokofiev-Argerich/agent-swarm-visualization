@@ -6,7 +6,7 @@
 //
 // Nested routes remain available as compat aliases for production.
 
-function withQuery(path: string, params: Record<string, string | boolean | undefined | null>): string {
+function withQuery(path: string, params: Record<string, string | number | boolean | undefined | null>): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null || v === false) continue;
@@ -28,11 +28,41 @@ export const apiPaths = {
 
   groupMessages: (
     groupId: string,
-    opts?: { markRead?: boolean; readerId?: string }
+    opts?: {
+      markRead?: boolean;
+      readerId?: string;
+      limit?: number;
+      before?: string;
+      phaseId?: string;
+    }
   ) =>
     withQuery("/api/group-messages", {
       groupId,
       markRead: opts?.markRead,
       readerId: opts?.readerId,
+      limit: opts?.limit,
+      before: opts?.before,
+      phaseId: opts?.phaseId,
+    }),
+
+  phaseSummaries: (groupId: string) =>
+    withQuery("/api/phase-summaries", { groupId }),
+
+  groupMessagesNested: (
+    groupId: string,
+    opts?: {
+      markRead?: boolean;
+      readerId?: string;
+      limit?: number;
+      before?: string;
+      phaseId?: string;
+    }
+  ) =>
+    withQuery(`/api/groups/${encodeURIComponent(groupId)}/messages`, {
+      markRead: opts?.markRead,
+      readerId: opts?.readerId,
+      limit: opts?.limit,
+      before: opts?.before,
+      phaseId: opts?.phaseId,
     }),
 };

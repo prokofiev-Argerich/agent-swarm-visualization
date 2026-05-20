@@ -1,7 +1,7 @@
-import { and, desc, eq, gt, ne, sql as dsql } from "drizzle-orm";
+import { and, desc, eq, gt, lt, ne, sql as dsql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { groups, groupMembers, messages } from "@/db/schema";
-import { emitDbWrite, now, uuid, type UUID } from "./shared";
+import { emitDbWrite, now, uuid, withSchemaRetry, type UUID } from "./shared";
 import {
   createGroup,
   findLatestExactGroupId,
@@ -9,21 +9,83 @@ import {
   mergeDuplicateExactP2PGroups,
 } from "./groups";
 
-export async function listMessages(input: { groupId: UUID }) {
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: messages.id,
-      senderId: messages.senderId,
-      content: messages.content,
-      contentType: messages.contentType,
-      sendTime: messages.sendTime,
-    })
-    .from(messages)
-    .where(eq(messages.groupId, input.groupId))
-    .orderBy(messages.sendTime);
+const MSG_SELECT = {
+  id: messages.id,
+  senderId: messages.senderId,
+  content: messages.content,
+  contentType: messages.contentType,
+  sendTime: messages.sendTime,
+  phaseId: messages.phaseId,
+};
 
-  return rows.map((m) => ({ ...m, sendTime: m.sendTime.toISOString() }));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toMsg(row: any) {
+  return {
+    id: row.id as string,
+    senderId: row.senderId as string,
+    content: row.content as string,
+    contentType: row.contentType as string,
+    sendTime: (row.sendTime as Date).toISOString(),
+    phaseId: (row.phaseId as string | null) ?? undefined,
+  };
+}
+
+export async function listMessages(input: { groupId: UUID }) {
+  return withSchemaRetry(async () => {
+    const db = getDb();
+    const rows = await db
+      .select(MSG_SELECT)
+      .from(messages)
+      .where(eq(messages.groupId, input.groupId))
+      .orderBy(messages.sendTime);
+
+    return rows.map(toMsg);
+  });
+}
+
+export async function listGroupMessagesPaged(input: {
+  groupId: UUID;
+  limit?: number;
+  before?: UUID;
+  phaseId?: UUID;
+}) {
+  return withSchemaRetry(async () => {
+    const db = getDb();
+    const limit = Math.max(1, Math.min(100, input.limit ?? 50));
+
+    const conditions: ReturnType<typeof eq>[] = [eq(messages.groupId, input.groupId)];
+    if (input.phaseId) {
+      conditions.push(eq(messages.phaseId, input.phaseId));
+    }
+    if (input.before) {
+      const beforeRow = await db
+        .select({ sendTime: messages.sendTime })
+        .from(messages)
+        .where(eq(messages.id, input.before))
+        .limit(1);
+      if (beforeRow.length > 0) {
+        conditions.push(lt(messages.sendTime, beforeRow[0]!.sendTime));
+      }
+    }
+
+    const rows = await db
+      .select(MSG_SELECT)
+      .from(messages)
+      .where(and(...conditions))
+      .orderBy(desc(messages.sendTime))
+      .limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
+    const sorted = page.reverse(); // return in asc order
+    const nextCursor = hasMore && sorted.length > 0 ? sorted[0]!.id : null;
+
+    return {
+      messages: sorted.map(toMsg),
+      hasMore,
+      nextCursor,
+    };
+  });
 }
 
 export async function sendMessage(input: {
@@ -31,37 +93,41 @@ export async function sendMessage(input: {
   senderId: UUID;
   content: string;
   contentType: string;
+  phaseId?: UUID;
 }) {
-  const db = getDb();
-  const group = await db
-    .select({ workspaceId: groups.workspaceId })
-    .from(groups)
-    .where(eq(groups.id, input.groupId))
-    .limit(1);
+  return withSchemaRetry(async () => {
+    const db = getDb();
+    const group = await db
+      .select({ workspaceId: groups.workspaceId })
+      .from(groups)
+      .where(eq(groups.id, input.groupId))
+      .limit(1);
 
-  if (group.length === 0) throw new Error("group not found");
+    if (group.length === 0) throw new Error("group not found");
 
-  const messageId = uuid();
-  const sendTime = now();
+    const messageId = uuid();
+    const sendTime = now();
 
-  await db.insert(messages).values({
-    id: messageId,
-    workspaceId: group[0]!.workspaceId,
-    groupId: input.groupId,
-    senderId: input.senderId,
-    contentType: input.contentType,
-    content: input.content,
-    sendTime,
+    await db.insert(messages).values({
+      id: messageId,
+      workspaceId: group[0]!.workspaceId,
+      groupId: input.groupId,
+      senderId: input.senderId,
+      contentType: input.contentType,
+      content: input.content,
+      sendTime,
+      phaseId: input.phaseId ?? null,
+    });
+
+    await emitDbWrite({
+      workspaceId: group[0]!.workspaceId,
+      table: "messages",
+      action: "insert",
+      recordId: messageId,
+    });
+
+    return { id: messageId, sendTime: sendTime.toISOString() };
   });
-
-  await emitDbWrite({
-    workspaceId: group[0]!.workspaceId,
-    table: "messages",
-    action: "insert",
-    recordId: messageId,
-  });
-
-  return { id: messageId, sendTime: sendTime.toISOString() };
 }
 
 export async function sendDirectMessage(input: {

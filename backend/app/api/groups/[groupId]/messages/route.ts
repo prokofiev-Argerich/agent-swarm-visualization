@@ -13,7 +13,17 @@ export async function GET(
   const url = new URL(req.url);
   const markRead = url.searchParams.get("markRead") === "true";
   const readerId = url.searchParams.get("readerId");
-  return listGroupMessagesResponse({ groupId, markRead, readerId });
+  const limit = url.searchParams.get("limit");
+  const before = url.searchParams.get("before");
+  const phaseId = url.searchParams.get("phaseId");
+  return listGroupMessagesResponse({
+    groupId,
+    markRead,
+    readerId,
+    limit: limit ? parseInt(limit, 10) : undefined,
+    before: before ?? undefined,
+    phaseId: phaseId ?? undefined,
+  });
 }
 
 export async function POST(

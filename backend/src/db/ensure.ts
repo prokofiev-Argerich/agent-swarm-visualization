@@ -18,10 +18,20 @@ export function isMissingTableError(error: unknown) {
     message?: string;
   };
 
-  return (
-    err?.code === "42P01" ||
-    err?.cause?.code === "42P01" ||
-    err?.message?.includes('relation "files" does not exist') ||
-    err?.cause?.message?.includes('relation "files" does not exist')
-  );
+  const code = err?.code ?? err?.cause?.code;
+  const msg = (err?.message ?? "") + (err?.cause?.message ?? "");
+
+  // 42P01 = relation/table doesn't exist
+  // 42703 = column doesn't exist (e.g. phase_id not yet added by migration)
+  if (code === "42P01" || code === "42703") return true;
+
+  // broader match: any "does not exist" from Postgres is likely a missing schema object
+  if (
+    msg.includes("does not exist") &&
+    (msg.includes("relation") || msg.includes("column") || msg.includes("table"))
+  ) {
+    return true;
+  }
+
+  return false;
 }

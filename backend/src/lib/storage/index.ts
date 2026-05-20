@@ -2,6 +2,7 @@ import * as agents from "./agents";
 import * as files from "./files";
 import * as groups from "./groups";
 import * as messages from "./messages";
+import * as phases from "./phases";
 import * as workspaces from "./workspaces";
 
 export const store = {
@@ -9,5 +10,6 @@ export const store = {
   ...files,
   ...groups,
   ...messages,
+  ...phases,
   ...workspaces,
 };
