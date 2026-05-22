@@ -227,6 +227,7 @@ export class AgentRunner {
         reasoning_content: assistantThinking || undefined,
       });
 
+      const originalText = assistantText;
       let finalDidSend = didSend;
       let finalText = assistantText;
 
@@ -251,11 +252,17 @@ export class AgentRunner {
         });
 
         finalDidSend = followup.didSend;
-        finalText = followup.assistantText;
+        // If followup did send, the tool already delivered the message — no fallback needed.
+        // If followup did NOT send, keep the first round's originalText as the final reply.
+        // The followup's text is typically a meta acknowledgment ("已直接回复客户…") and
+        // should never be auto-sent to the group.
+        if (!followup.didSend) {
+          finalText = originalText;
+        }
       }
 
       // Fallback: auto-send final reply to the trigger group if agent never called send
-      if (!finalDidSend && !this.interruptRequested && this.currentGroupId) {
+      if (!finalDidSend && !this.interruptRequested && this.currentGroupId && !isMetaAcknowledgment(finalText)) {
         try {
           const activePhase = await store.getActiveWorkflowPhase({ groupId: this.currentGroupId });
           const result = await store.sendMessage({
@@ -420,4 +427,18 @@ export class AgentRunner {
 
     return { assistantText, assistantThinking, didSend };
   }
+}
+
+const META_ACKNOWLEDGMENT_PATTERNS = [
+  /已直接回复客户/,
+  /无需再次发送/,
+  /已回复/,
+  /already (replied|sent|responded)/i,
+  /no need to (send|reply)/i,
+];
+
+function isMetaAcknowledgment(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return false;
+  return META_ACKNOWLEDGMENT_PATTERNS.some((p) => p.test(trimmed));
 }
