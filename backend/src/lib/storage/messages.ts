@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, ne, sql as dsql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, lt, ne, sql as dsql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { groups, groupMembers, messages } from "@/db/schema";
 import { emitDbWrite, now, uuid, withSchemaRetry, type UUID } from "./shared";
@@ -16,6 +16,7 @@ const MSG_SELECT = {
   contentType: messages.contentType,
   sendTime: messages.sendTime,
   phaseId: messages.phaseId,
+  causedBy: messages.causedBy,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,6 +28,7 @@ function toMsg(row: any) {
     contentType: row.contentType as string,
     sendTime: (row.sendTime as Date).toISOString(),
     phaseId: (row.phaseId as string | null) ?? undefined,
+    causedBy: (row.causedBy as string | null) ?? undefined,
   };
 }
 
@@ -94,6 +96,7 @@ export async function sendMessage(input: {
   content: string;
   contentType: string;
   phaseId?: UUID;
+  causedBy?: UUID;
 }) {
   return withSchemaRetry(async () => {
     const db = getDb();
@@ -117,6 +120,7 @@ export async function sendMessage(input: {
       content: input.content,
       sendTime,
       phaseId: input.phaseId ?? null,
+      causedBy: input.causedBy ?? null,
     });
 
     await emitDbWrite({
@@ -139,6 +143,7 @@ export async function sendDirectMessage(input: {
   contentType?: string;
   groupName?: string | null;
   newThread?: boolean;
+  causedBy?: UUID;
 }) {
   const memberIds = [
     input.fromId,
@@ -166,6 +171,12 @@ export async function sendDirectMessage(input: {
       memberB: memberIds[1]!,
       preferredName: input.groupName ?? null,
     });
+    // eslint-disable-next-line no-console
+    console.log("[sendDirectMessage:P2P]", {
+      memberA: memberIds[0]!.slice(0, 8),
+      memberB: memberIds[1]!.slice(0, 8),
+      existing: existing?.slice(0, 8) ?? null,
+    });
     groupId =
       (await mergeDuplicateExactP2PGroups({
         workspaceId: input.workspaceId,
@@ -181,6 +192,11 @@ export async function sendDirectMessage(input: {
         })
       ).id;
     channel = existing ? "reuse_existing_group" : "new_group";
+    // eslint-disable-next-line no-console
+    console.log("[sendDirectMessage:P2P] result", {
+      groupId: groupId.slice(0, 8),
+      channel,
+    });
   } else {
     const existing = await findLatestExactGroupId({
       workspaceId: input.workspaceId,
@@ -203,6 +219,7 @@ export async function sendDirectMessage(input: {
     senderId: input.fromId,
     content: input.content,
     contentType: input.contentType ?? "text",
+    causedBy: input.causedBy,
   });
 
   return { groupId, messageId: message.id, sendTime: message.sendTime, channel };
@@ -281,6 +298,7 @@ export async function listRecentWorkspaceMessages(input: {
       groupId: messages.groupId,
       senderId: messages.senderId,
       sendTime: messages.sendTime,
+      causedBy: messages.causedBy,
     })
     .from(messages)
     .where(eq(messages.workspaceId, input.workspaceId))
@@ -292,5 +310,81 @@ export async function listRecentWorkspaceMessages(input: {
     groupId: m.groupId,
     senderId: m.senderId,
     sendTime: m.sendTime.toISOString(),
+    causedBy: (m.causedBy as string | null) ?? undefined,
   }));
+}
+
+export async function searchMessages(input: {
+  workspaceId: UUID;
+  query: string;
+  limit?: number;
+}) {
+  return withSchemaRetry(async () => {
+    const db = getDb();
+    const limit = Math.max(1, Math.min(50, input.limit ?? 20));
+    const trimmed = input.query.trim();
+    if (!trimmed) return [];
+    const pattern = `%${trimmed.replace(/[%_]/g, "\\$&")}%`;
+    const rows = await db
+      .select({
+        id: messages.id,
+        groupId: messages.groupId,
+        senderId: messages.senderId,
+        content: messages.content,
+        contentType: messages.contentType,
+        sendTime: messages.sendTime,
+      })
+      .from(messages)
+      .where(and(eq(messages.workspaceId, input.workspaceId), ilike(messages.content, pattern)))
+      .orderBy(desc(messages.sendTime))
+      .limit(limit);
+
+    return rows.map((m) => ({
+      id: m.id,
+      groupId: m.groupId,
+      senderId: m.senderId,
+      contentType: m.contentType,
+      content: m.content.length > 200 ? m.content.slice(0, 200) + "…" : m.content,
+      sendTime: m.sendTime.toISOString(),
+    }));
+  });
+}
+
+export async function getMessagesByIds(input: {
+  workspaceId: UUID;
+  ids: UUID[];
+}) {
+  return withSchemaRetry(async () => {
+    if (input.ids.length === 0) return [];
+    const db = getDb();
+    const rows = await db
+      .select({
+        id: messages.id,
+        groupId: messages.groupId,
+        senderId: messages.senderId,
+        content: messages.content,
+        contentType: messages.contentType,
+        sendTime: messages.sendTime,
+        phaseId: messages.phaseId,
+        causedBy: messages.causedBy,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.workspaceId, input.workspaceId),
+          inArray(messages.id, input.ids)
+        )
+      )
+      .orderBy(desc(messages.sendTime));
+    return rows.map((r) => ({
+      id: r.id,
+      groupId: r.groupId,
+      senderId: r.senderId,
+      content: r.content,
+      contentType: r.contentType,
+      sendTime: r.sendTime.toISOString(),
+      phaseId: (r.phaseId as string | null) ?? undefined,
+      causedBy: (r.causedBy as string | null) ?? undefined,
+    }));
+  });
 }

@@ -75,7 +75,9 @@ export function initialAgentHistory(input: {
     `Act strictly as this role when replying. Be concise and helpful.\n` +
     `Your replies are NOT automatically delivered to humans.\n` +
     `To send messages, you MUST call tools like send_group_message or send_direct_message.\n` +
-    `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.\n` +
+    `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, add_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.\n` +
+    `When creating a group with create_group, give it a concise, meaningful name using member roles (e.g. "PM+DevLead", "Review-QA+UX"). Avoid generic names like "full-mesh" or "group-1".\n` +
+    `After creating sub-agents with the "create" tool, use add_group_members to bring them into the same group so they can collaborate.\n` +
     `If you need to read a file that was uploaded to this workspace, use the read_file tool with the fileId (never a filesystem path).`;
 
   const history: Array<{ role: "system"; content: string }> = [{ role: "system", content }];

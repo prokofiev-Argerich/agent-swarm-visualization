@@ -22,6 +22,7 @@ export async function GET(req: Request) {
         events: [
           "ui.agent.created",
           "ui.group.created",
+          "ui.group.updated",
           "ui.message.created",
           "ui.agent.llm.start",
           "ui.agent.llm.done",

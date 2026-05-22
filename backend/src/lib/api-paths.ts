@@ -48,6 +48,20 @@ export const apiPaths = {
   phaseSummaries: (groupId: string) =>
     withQuery("/api/phase-summaries", { groupId }),
 
+  fileContent: (fileId: string, workspaceId: string) =>
+    withQuery("/api/file-content", { fileId, workspaceId }),
+
+  search: (workspaceId: string, q: string, opts?: { agentId?: string; limit?: number }) =>
+    withQuery("/api/search", {
+      workspaceId,
+      q,
+      agentId: opts?.agentId,
+      limit: opts?.limit,
+    }),
+
+  messagesByIds: (workspaceId: string, ids: string[]) =>
+    withQuery("/api/messages-by-ids", { workspaceId, ids: ids.join(",") }),
+
   groupMessagesNested: (
     groupId: string,
     opts?: {

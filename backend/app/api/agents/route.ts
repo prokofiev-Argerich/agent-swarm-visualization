@@ -50,29 +50,14 @@ export async function POST(req: Request) {
   await runtime.bootstrap();
   const { humanAgentId } = await store.ensureWorkspaceDefaults({ workspaceId });
 
-  if (body?.groupId) {
-    const created = await store.createSubAgentWithP2P({ workspaceId, creatorId, role });
-    await store.addGroupMembers({ groupId: body.groupId, userIds: [created.agentId] });
-    runtime.ensureRunner(created.agentId);
-    getWorkspaceUIBus().emit(workspaceId, {
-      event: "ui.agent.created",
-      data: { workspaceId, agent: { id: created.agentId, role, parentId: creatorId } },
-    });
-    getWorkspaceUIBus().emit(workspaceId, {
-      event: "ui.group.created",
-      data: {
-        workspaceId,
-        group: { id: created.groupId, name: role, memberIds: [humanAgentId, created.agentId] },
-      },
-    });
+  const collaborationGroupId = body?.groupId?.trim() || undefined;
 
-    return Response.json(
-      { agentId: created.agentId, groupId: body.groupId, createdAt: created.createdAt },
-      { status: 201 }
-    );
-  }
-
-  const created = await store.createSubAgentWithP2P({ workspaceId, creatorId, role });
+  const created = await store.createSubAgentWithP2P({
+    workspaceId,
+    creatorId,
+    role,
+    collaborationGroupId,
+  });
   runtime.ensureRunner(created.agentId);
   getWorkspaceUIBus().emit(workspaceId, {
     event: "ui.agent.created",
@@ -80,8 +65,25 @@ export async function POST(req: Request) {
   });
   getWorkspaceUIBus().emit(workspaceId, {
     event: "ui.group.created",
-    data: { workspaceId, group: { id: created.groupId, name: role, memberIds: [humanAgentId, created.agentId] } },
+    data: {
+      workspaceId,
+      group: { id: created.groupId, name: role, memberIds: [humanAgentId, created.agentId] },
+    },
   });
+  if (created.collaborationGroupId) {
+    getWorkspaceUIBus().emit(workspaceId, {
+      event: "ui.group.updated",
+      data: { workspaceId, groupId: created.collaborationGroupId, addedMembers: [created.agentId] },
+    });
+  }
 
-  return Response.json(created, { status: 201 });
+  return Response.json(
+    {
+      agentId: created.agentId,
+      groupId: created.groupId,
+      collaborationGroupId: created.collaborationGroupId,
+      createdAt: created.createdAt,
+    },
+    { status: 201 }
+  );
 }

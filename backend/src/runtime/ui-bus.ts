@@ -14,6 +14,12 @@ export type UIEvent =
   | {
       id: number;
       at: number;
+      event: "ui.group.updated";
+      data: { workspaceId: string; groupId: string; addedMembers: string[] };
+    }
+  | {
+      id: number;
+      at: number;
       event: "ui.message.created";
       data: {
         workspaceId: string;
@@ -81,6 +87,16 @@ export type UIEvent =
         fileId: string;
         filename: string;
         truncated: boolean;
+      };
+    }
+  | {
+      id: number;
+      at: number;
+      event: "ui.agent.error";
+      data: {
+        workspaceId: string;
+        agentId: string;
+        message: string;
       };
     }
   | {

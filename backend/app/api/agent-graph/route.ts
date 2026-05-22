@@ -5,7 +5,16 @@ import { store } from "@/lib/storage";
 type UUID = string;
 
 type GraphNode = { id: UUID; role: string; parentId: UUID | null };
-type GraphEdge = { from: UUID; to: UUID; count: number; lastSendTime: string };
+type GraphEdge = {
+  fromAgentId: UUID;
+  toAgentId: UUID;
+  count: number;
+  lastMessageId: UUID;
+  lastMessageAt: string;
+  sampleMessageIds: UUID[];
+};
+
+const SAMPLE_LIMIT = 5;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -17,26 +26,41 @@ export async function GET(req: Request) {
   }
 
   const agents = await store.listAgentsMeta({ workspaceId });
-  const groups = await store.listGroups({ workspaceId });
   const recentMessages = await store.listRecentWorkspaceMessages({ workspaceId, limit: limitMessages });
 
-  const groupMembersById = new Map<UUID, UUID[]>();
-  for (const g of groups) {
-    groupMembersById.set(g.id, g.memberIds);
-  }
+  const messagesById = new Map<UUID, (typeof recentMessages)[number]>();
+  for (const m of recentMessages) messagesById.set(m.id, m);
 
+  // Aggregate causal edges: upstream.senderId -> downstream.senderId
   const edgeByKey = new Map<string, GraphEdge>();
   for (const m of recentMessages) {
-    const members = groupMembersById.get(m.groupId) ?? [];
-    for (const to of members) {
-      if (to === m.senderId) continue;
-      const key = `${m.senderId}=>${to}`;
-      const existing = edgeByKey.get(key);
-      if (!existing) {
-        edgeByKey.set(key, { from: m.senderId, to, count: 1, lastSendTime: m.sendTime });
-      } else {
-        existing.count += 1;
-        if (m.sendTime > existing.lastSendTime) existing.lastSendTime = m.sendTime;
+    if (!m.causedBy) continue;
+    const upstream = messagesById.get(m.causedBy);
+    if (!upstream) continue;
+
+    const from = upstream.senderId;
+    const to = m.senderId;
+    if (from === to) continue;
+
+    const key = `${from}=>${to}`;
+    const existing = edgeByKey.get(key);
+    if (!existing) {
+      edgeByKey.set(key, {
+        fromAgentId: from,
+        toAgentId: to,
+        count: 1,
+        lastMessageId: m.id,
+        lastMessageAt: m.sendTime,
+        sampleMessageIds: [m.id],
+      });
+    } else {
+      existing.count += 1;
+      if (m.sendTime > existing.lastMessageAt) {
+        existing.lastMessageId = m.id;
+        existing.lastMessageAt = m.sendTime;
+      }
+      if (existing.sampleMessageIds.length < SAMPLE_LIMIT) {
+        existing.sampleMessageIds.push(m.id);
       }
     }
   }
@@ -47,17 +71,18 @@ export async function GET(req: Request) {
     parentId: a.parentId,
   }));
 
-  const edges = [...edgeByKey.values()].sort((a, b) => b.lastSendTime.localeCompare(a.lastSendTime));
+  const edges = [...edgeByKey.values()].sort((a, b) =>
+    b.lastMessageAt.localeCompare(a.lastMessageAt)
+  );
 
   return Response.json({
     nodes,
     edges,
     meta: {
       workspaceId,
-      groups: groups.length,
       agents: agents.length,
       messagesConsidered: recentMessages.length,
+      causalEdgesFound: edges.length,
     },
   });
 }
-

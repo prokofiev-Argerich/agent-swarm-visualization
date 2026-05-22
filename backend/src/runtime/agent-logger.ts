@@ -1,14 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-
-type HistoryMessage =
-  | {
-      role: "system" | "user" | "assistant";
-      content: string;
-      tool_calls?: unknown;
-      reasoning_content?: string;
-    }
-  | { role: "tool"; content: string; tool_call_id?: string; name?: string };
+import type { HistoryMessage } from "./types";
 
 type HistorySnapshot = {
   at: string;
@@ -55,6 +47,10 @@ function getRequestLogDir() {
   return process.env.AGENT_LLM_REQUEST_LOG_DIR ?? DEFAULT_REQUEST_LOG_DIR;
 }
 
+function isLoggingDisabled() {
+  return process.env.AGENT_LOG_DISABLED === "1" || process.env.AGENT_LOG_DISABLED === "true";
+}
+
 function enqueueStreamWrite(agentId: string, task: () => Promise<void>) {
   const prev = streamQueues.get(agentId) ?? Promise.resolve();
   const next = prev.catch(() => undefined).then(task);
@@ -75,6 +71,7 @@ export async function appendAgentHistorySnapshot(input: {
   groupId: string;
   history: HistoryMessage[];
 }) {
+  if (isLoggingDisabled()) return;
   const logDir = getLogDir();
   await ensureDir(logDir);
 
@@ -101,6 +98,7 @@ export async function appendAgentStreamEvent(input: {
   tool_call_name?: string;
   error?: string;
 }) {
+  if (isLoggingDisabled()) return;
   const logDir = getStreamLogDir();
   await ensureDir(logDir);
 
@@ -177,6 +175,7 @@ export async function appendAgentStreamEvent(input: {
 }
 
 export async function appendAgentLlmRequestRaw(input: { agentId: string; body: string }) {
+  if (isLoggingDisabled()) return;
   const logDir = getRequestLogDir();
   await ensureDir(logDir);
   const filename = path.join(logDir, `agent-${input.agentId}.jsonl`);

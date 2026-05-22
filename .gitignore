@@ -16,6 +16,8 @@ backend/.agent_stream_logs/
 backend/.agent_llm_requests/
 backend/data/
 backend/workspace/
+backend/workspaces/
+.next/
 tmp/
 .gemini/
 .mcp.json

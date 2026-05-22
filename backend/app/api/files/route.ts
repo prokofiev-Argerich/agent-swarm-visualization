@@ -28,8 +28,17 @@ export async function GET(req: Request) {
       })),
     });
   } catch (e) {
+    console.error("[api/files] listFilesByWorkspace failed", e);
+    const cause = (e as { cause?: { message?: string; code?: string } })?.cause;
+    const detail =
+      cause?.message ??
+      (e instanceof Error ? e.message : "Failed to list files");
+    const code = cause?.code;
     return Response.json(
-      { error: e instanceof Error ? e.message : "Failed to list files" },
+      {
+        error: detail,
+        ...(code ? { code } : {}),
+      },
       { status: 500 }
     );
   }

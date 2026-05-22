@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, ne, sql as dsql } from "drizzle-orm";
+import { and, desc, eq, gt, ne, sql as dsql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { groups, groupMembers, messages } from "@/db/schema";
 import { emitDbWrite, now, uuid, type UUID } from "./shared";
@@ -27,7 +27,7 @@ export async function findLatestExactP2PGroupId(input: {
     .where(eq(groups.workspaceId, input.workspaceId))
     .groupBy(groups.id)
     .having(
-      dsql`count(*) = 2 and sum(case when ${groupMembers.userId} = ${a} or ${groupMembers.userId} = ${b} then 1 else 0 end) = 2`
+      dsql`count(distinct ${groupMembers.userId}) = 2 and sum(case when ${groupMembers.userId} = ${a} then 1 else 0 end) > 0 and sum(case when ${groupMembers.userId} = ${b} then 1 else 0 end) > 0`
     );
 
   if (rows.length === 0) return null;
@@ -81,7 +81,7 @@ export async function mergeDuplicateExactP2PGroups(input: {
       .where(eq(groups.workspaceId, input.workspaceId))
       .groupBy(groups.id)
       .having(
-        dsql`count(*) = 2 and sum(case when ${groupMembers.userId} = ${a} or ${groupMembers.userId} = ${b} then 1 else 0 end) = 2`
+        dsql`count(distinct ${groupMembers.userId}) = 2 and sum(case when ${groupMembers.userId} = ${a} then 1 else 0 end) > 0 and sum(case when ${groupMembers.userId} = ${b} then 1 else 0 end) > 0`
       );
 
     const preferred = (input.preferredName ?? null) || null;
@@ -227,6 +227,11 @@ export async function findLatestExactGroupId(input: {
   const ids = [...new Set(input.memberIds)].filter(Boolean);
   if (ids.length === 0) return null;
 
+  const checks = ids.map((id) =>
+    dsql`sum(case when ${groupMembers.userId} = ${id} then 1 else 0 end) > 0`
+  );
+  const joinedChecks = checks.reduce((acc, cond) => dsql`${acc} and ${cond}`);
+
   const rows = await db
     .select({
       id: groups.id,
@@ -236,10 +241,10 @@ export async function findLatestExactGroupId(input: {
     .from(groups)
     .innerJoin(groupMembers, eq(groupMembers.groupId, groups.id))
     .leftJoin(messages, eq(messages.groupId, groups.id))
-    .where(and(eq(groups.workspaceId, input.workspaceId), inArray(groupMembers.userId, ids)))
+    .where(eq(groups.workspaceId, input.workspaceId))
     .groupBy(groups.id)
     .having(
-      dsql`count(distinct ${groupMembers.userId}) = ${ids.length} and count(*) = ${ids.length}`
+      dsql`count(distinct ${groupMembers.userId}) = ${ids.length} and ${joinedChecks}`
     )
     .orderBy(desc(dsql`coalesce(max(${messages.sendTime}), ${groups.createdAt})`))
     .limit(1);

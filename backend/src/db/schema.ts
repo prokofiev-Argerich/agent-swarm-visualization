@@ -55,6 +55,7 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   sendTime: timestamp("send_time", { withTimezone: true }).notNull(),
   phaseId: uuid("phase_id"),
+  causedBy: uuid("caused_by"),
 });
 
 export const workflowPhases = pgTable("workflow_phases", {
