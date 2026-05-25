@@ -1,5 +1,7 @@
-import { store } from "@/lib/storage";
-import { getWorkspaceUIBus } from "../ui-bus";
+import { listGroupMemberIds, getGroupWorkspaceId } from "@/services/group-service";
+import { sendDirectMessage, sendGroupMessage, listMessages } from "@/services/message-service";
+import { getActiveWorkflowPhase } from "@/services/workflow-service";
+import { getAgentRole } from "@/services/agent-service";
 import { parseArgs, requireParam, requireUuid, requireGroupMembership } from "./validate";
 import type { RuntimeTool } from "./types";
 
@@ -34,7 +36,7 @@ export const messageTools: RuntimeTool[] = [
       const missingContent = requireParam(content, "content");
       if (missingContent) return missingContent;
 
-      const delivered = await store.sendDirectMessage({
+      const delivered = await sendDirectMessage({
         workspaceId: context.workspaceId,
         fromId: context.agentId,
         toId: to,
@@ -44,8 +46,9 @@ export const messageTools: RuntimeTool[] = [
         causedBy: context.triggerMessageId,
       });
 
-      const directMembers = await store.listGroupMemberIds({ groupId: delivered.groupId });
-      getWorkspaceUIBus().emit(context.workspaceId, {
+      const directMembers = await listGroupMemberIds({ groupId: delivered.groupId });
+      context.events.emit({
+        workspaceId: context.workspaceId,
         event: "ui.message.created",
         data: {
           workspaceId: context.workspaceId,
@@ -55,7 +58,7 @@ export const messageTools: RuntimeTool[] = [
         },
       });
 
-      const toRole = await store.getAgentRole({ agentId: to }).catch(() => null);
+      const toRole = await getAgentRole({ agentId: to }).catch(() => null);
       if (toRole && toRole !== "human") {
         context.ensureRunner(to);
         context.wakeAgent(to);
@@ -94,13 +97,13 @@ export const messageTools: RuntimeTool[] = [
       const missingContent = requireParam(content, "content");
       if (missingContent) return missingContent;
 
-      const members = await store.listGroupMemberIds({ groupId });
+      const members = await listGroupMemberIds({ groupId });
       const denied = requireGroupMembership(members, context.agentId);
       if (denied) return denied;
 
-      const activePhase = await store.getActiveWorkflowPhase({ groupId });
+      const activePhase = await getActiveWorkflowPhase({ groupId });
 
-      const result = await store.sendMessage({
+      const result = await sendGroupMessage({
         groupId,
         senderId: context.agentId,
         content,
@@ -109,7 +112,8 @@ export const messageTools: RuntimeTool[] = [
         causedBy: context.triggerMessageId,
       });
 
-      getWorkspaceUIBus().emit(context.workspaceId, {
+      context.events.emit({
+        workspaceId: context.workspaceId,
         event: "ui.message.created",
         data: {
           workspaceId: context.workspaceId,
@@ -121,7 +125,7 @@ export const messageTools: RuntimeTool[] = [
 
       for (const memberId of members) {
         if (memberId === context.agentId) continue;
-        const role = await store.getAgentRole({ agentId: memberId }).catch(() => null);
+        const role = await getAgentRole({ agentId: memberId }).catch(() => null);
         if (role === "human" || role === null) continue;
         context.ensureRunner(memberId);
         context.wakeAgent(memberId);
@@ -161,7 +165,7 @@ export const messageTools: RuntimeTool[] = [
       const missingContent = requireParam(content, "content");
       if (missingContent) return missingContent;
 
-      const delivered = await store.sendDirectMessage({
+      const delivered = await sendDirectMessage({
         workspaceId: context.workspaceId,
         fromId: context.agentId,
         toId: toAgentId,
@@ -172,8 +176,9 @@ export const messageTools: RuntimeTool[] = [
       });
       const groupId = delivered.groupId;
       const channel = delivered.channel;
-      const directMembers = await store.listGroupMemberIds({ groupId });
-      getWorkspaceUIBus().emit(context.workspaceId, {
+      const directMembers = await listGroupMemberIds({ groupId });
+      context.events.emit({
+        workspaceId: context.workspaceId,
         event: "ui.message.created",
         data: {
           workspaceId: context.workspaceId,
@@ -219,10 +224,10 @@ export const messageTools: RuntimeTool[] = [
       if (missing) return missing;
       const notUuid = requireUuid(groupId, "groupId", "Use list_groups to find valid groupIds.");
       if (notUuid) return notUuid;
-      const members = await store.listGroupMemberIds({ groupId });
+      const members = await listGroupMemberIds({ groupId });
       const denied = requireGroupMembership(members, context.agentId);
       if (denied) return denied;
-      const messages = await store.listMessages({ groupId });
+      const messages = await listMessages({ groupId });
       return { ok: true, messages };
     },
   },

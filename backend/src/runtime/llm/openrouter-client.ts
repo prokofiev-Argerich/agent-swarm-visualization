@@ -1,9 +1,9 @@
 import { AgentEventBus } from "../event-bus";
 import { getOpenRouterConfig } from "./config";
 import { emitLlmStart, processStreamResponse, type StreamHandlerContext } from "./stream-events";
-import { appendAgentLlmRequestRaw } from "../agent-logger";
 import type { HistoryMessage } from "../types";
 import type { LlmClient, LlmStreamResult, LlmStreamContext } from "./types";
+import type { RuntimeEventSink, RuntimeLogger } from "../ports";
 
 function mapOpenRouterMessages(history: HistoryMessage[]): Array<Record<string, unknown>> {
   return history.map((msg) => {
@@ -23,7 +23,9 @@ function mapOpenRouterMessages(history: HistoryMessage[]): Array<Record<string, 
 export class OpenRouterClient implements LlmClient {
   constructor(
     private readonly bus: AgentEventBus,
-    private readonly getTools: () => Promise<Array<Record<string, unknown>>>
+    private readonly getTools: () => Promise<Array<Record<string, unknown>>>,
+    private readonly eventSink: RuntimeEventSink,
+    private readonly logger: RuntimeLogger,
   ) {}
 
   async streamChat(history: HistoryMessage[], ctx: LlmStreamContext): Promise<LlmStreamResult> {
@@ -35,6 +37,8 @@ export class OpenRouterClient implements LlmClient {
       groupId: ctx.groupId,
       round: ctx.round,
       bus: this.bus,
+      eventSink: this.eventSink,
+      logger: this.logger,
     };
 
     emitLlmStart(streamCtx);
@@ -59,7 +63,7 @@ export class OpenRouterClient implements LlmClient {
     if (config.appTitle) headers["X-Title"] = config.appTitle;
 
     const requestBody = JSON.stringify(payload);
-    void appendAgentLlmRequestRaw({ agentId: ctx.agentId, body: requestBody });
+    this.logger.llmRequestRaw?.({ agentId: ctx.agentId, body: requestBody });
 
     const upstream = await fetch(config.baseUrl, {
       method: "POST",

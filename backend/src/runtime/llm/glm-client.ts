@@ -1,14 +1,16 @@
 import { AgentEventBus } from "../event-bus";
 import { getGlmConfig } from "./config";
 import { emitLlmStart, processStreamResponse, type StreamHandlerContext } from "./stream-events";
-import { appendAgentLlmRequestRaw } from "../agent-logger";
 import type { HistoryMessage } from "../types";
 import type { LlmClient, LlmStreamResult, LlmStreamContext } from "./types";
+import type { RuntimeEventSink, RuntimeLogger } from "../ports";
 
 export class GlmClient implements LlmClient {
   constructor(
     private readonly bus: AgentEventBus,
-    private readonly getTools: () => Promise<Array<Record<string, unknown>>>
+    private readonly getTools: () => Promise<Array<Record<string, unknown>>>,
+    private readonly eventSink: RuntimeEventSink,
+    private readonly logger: RuntimeLogger,
   ) {}
 
   async streamChat(history: HistoryMessage[], ctx: LlmStreamContext): Promise<LlmStreamResult> {
@@ -20,6 +22,8 @@ export class GlmClient implements LlmClient {
       groupId: ctx.groupId,
       round: ctx.round,
       bus: this.bus,
+      eventSink: this.eventSink,
+      logger: this.logger,
     };
 
     emitLlmStart(streamCtx);
@@ -33,7 +37,7 @@ export class GlmClient implements LlmClient {
       tool_stream: true,
     };
     const requestBody = JSON.stringify(glmPayload);
-    void appendAgentLlmRequestRaw({ agentId: ctx.agentId, body: requestBody });
+    this.logger.llmRequestRaw?.({ agentId: ctx.agentId, body: requestBody });
 
     const upstream = await fetch(config.baseUrl, {
       method: "POST",

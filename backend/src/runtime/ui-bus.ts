@@ -168,7 +168,7 @@ export class WorkspaceUIBus {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __swarmIdeUIBus: WorkspaceUIBus | undefined;
 }
 

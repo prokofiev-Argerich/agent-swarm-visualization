@@ -1,11 +1,10 @@
 import { StreamAssembler, parseSSEJsonLines } from "@/lib/llm";
 import { store } from "@/lib/storage";
 import { AgentEventBus } from "../event-bus";
-import { getWorkspaceUIBus } from "../ui-bus";
 import { extractToolCallDeltas } from "./tool-call-deltas";
-import { appendAgentStreamEvent } from "../agent-logger";
 import type { ToolCall, UUID } from "../types";
 import type { LlmStreamResult } from "./types";
+import type { RuntimeEventSink, RuntimeLogger } from "../ports";
 
 export type StreamHandlerContext = {
   agentId: UUID;
@@ -13,6 +12,8 @@ export type StreamHandlerContext = {
   groupId: UUID;
   round: number;
   bus: AgentEventBus;
+  eventSink: RuntimeEventSink;
+  logger: RuntimeLogger;
 };
 
 export async function processStreamResponse(
@@ -37,7 +38,7 @@ export async function processStreamResponse(
         event: "agent.stream",
         data: { kind: "reasoning", delta: reasoningDelta },
       });
-      void appendAgentStreamEvent({
+      ctx.logger.stream({
         agentId: ctx.agentId,
         round: ctx.round,
         kind: "reasoning",
@@ -51,7 +52,7 @@ export async function processStreamResponse(
         event: "agent.stream",
         data: { kind: "content", delta: contentDelta },
       });
-      void appendAgentStreamEvent({
+      ctx.logger.stream({
         agentId: ctx.agentId,
         round: ctx.round,
         kind: "content",
@@ -69,7 +70,7 @@ export async function processStreamResponse(
           tool_call_name: delta.tool_call_name,
         },
       });
-      void appendAgentStreamEvent({
+      ctx.logger.stream({
         agentId: ctx.agentId,
         round: ctx.round,
         kind: "tool_calls",
@@ -87,13 +88,14 @@ export async function processStreamResponse(
     event: "agent.done",
     data: { finishReason: prev.finishReason ?? undefined },
   });
-  void appendAgentStreamEvent({
+  ctx.logger.stream({
     agentId: ctx.agentId,
     round: ctx.round,
     kind: "done",
     finishReason: prev.finishReason ?? null,
   });
-  getWorkspaceUIBus().emit(ctx.workspaceId, {
+  ctx.eventSink.emit({
+    workspaceId: ctx.workspaceId,
     event: "ui.agent.llm.done",
     data: {
       workspaceId: ctx.workspaceId,
@@ -126,7 +128,8 @@ export async function processStreamResponse(
 }
 
 export function emitLlmStart(ctx: StreamHandlerContext) {
-  getWorkspaceUIBus().emit(ctx.workspaceId, {
+  ctx.eventSink.emit({
+    workspaceId: ctx.workspaceId,
     event: "ui.agent.llm.start",
     data: {
       workspaceId: ctx.workspaceId,
@@ -135,7 +138,7 @@ export function emitLlmStart(ctx: StreamHandlerContext) {
       round: ctx.round,
     },
   });
-  void appendAgentStreamEvent({
+  ctx.logger.stream({
     agentId: ctx.agentId,
     round: ctx.round,
     kind: "start",

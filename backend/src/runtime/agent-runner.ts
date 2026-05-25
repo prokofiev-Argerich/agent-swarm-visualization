@@ -1,8 +1,6 @@
 import { store } from "@/lib/storage";
 import { AgentEventBus } from "./event-bus";
 import { createDeferred, safeJsonParse } from "./utils";
-import { getWorkspaceUIBus } from "./ui-bus";
-import { appendAgentHistorySnapshot, appendAgentStreamEvent } from "./agent-logger";
 import { buildSkillsBlock, historyHasSkills } from "./context/skills-context";
 import { buildFilesBlock } from "./context/files-context";
 import { createLlmClient } from "./llm/llm-client";
@@ -10,6 +8,7 @@ import { createToolRegistry, getAgentTools, ToolExecutor } from "./tools/builtin
 import type { UUID, HistoryMessage, ToolCall } from "./types";
 import type { ToolContext, ToolResult } from "./tools/types";
 import { SEND_TOOL_NAMES } from "./types";
+import type { RuntimeEventSink, RuntimeLogger } from "./ports";
 
 export class AgentRunner {
   private wake = createDeferred<void>();
@@ -24,12 +23,16 @@ export class AgentRunner {
     private readonly agentId: UUID,
     private readonly bus: AgentEventBus,
     private readonly ensureRunner: (agentId: UUID) => void,
-    private readonly wakeAgent: (agentId: UUID) => void
+    private readonly wakeAgent: (agentId: UUID) => void,
+    private readonly events: RuntimeEventSink,
+    private readonly logger: RuntimeLogger,
   ) {
     this.toolExecutor = new ToolExecutor(createToolRegistry());
     this.llmClient = createLlmClient({
       bus: this.bus,
       getTools: () => getAgentTools(),
+      eventSink: this.events,
+      logger: this.logger,
     });
   }
 
@@ -80,7 +83,7 @@ export class AgentRunner {
   }
 
   private async loop() {
-    // eslint-disable-next-line no-constant-condition
+     
     while (true) {
       await this.wake.promise;
       if (this.running) continue;
@@ -93,7 +96,7 @@ export class AgentRunner {
           event: "agent.error",
           data: { message },
         });
-        void appendAgentStreamEvent({
+        this.logger.stream({
           agentId: this.agentId,
           kind: "error",
           error: message,
@@ -102,7 +105,8 @@ export class AgentRunner {
           .getAgent({ agentId: this.agentId })
           .then((agent) => {
             try {
-              getWorkspaceUIBus().emit(agent.workspaceId, {
+              this.events.emit({
+                workspaceId: agent.workspaceId,
                 event: "ui.agent.error",
                 data: {
                   workspaceId: agent.workspaceId,
@@ -127,7 +131,7 @@ export class AgentRunner {
     const role = await store.getAgentRole({ agentId: this.agentId }).catch(() => null);
     if (role === "human" || role === null) return;
     if (this.consumeInterruptRequest()) return;
-    // eslint-disable-next-line no-constant-condition
+     
     while (true) {
       if (this.consumeInterruptRequest()) return;
       const batches = await store.listUnreadByGroup({ agentId: this.agentId });
@@ -274,7 +278,8 @@ export class AgentRunner {
             causedBy: lastId,
           });
           const members = await store.listGroupMemberIds({ groupId: this.currentGroupId });
-          getWorkspaceUIBus().emit(workspaceId, {
+          this.events.emit({
+            workspaceId,
             event: "ui.message.created",
             data: {
               workspaceId,
@@ -298,7 +303,7 @@ export class AgentRunner {
         workspaceId,
       });
       try {
-        await appendAgentHistorySnapshot({
+        await this.logger.historySnapshot({
           agentId: this.agentId,
           workspaceId,
           groupId,
@@ -307,7 +312,8 @@ export class AgentRunner {
       } catch {
         // best-effort logging
       }
-      getWorkspaceUIBus().emit(workspaceId, {
+      this.events.emit({
+        workspaceId,
         event: "ui.agent.history.persisted",
         data: { workspaceId, agentId: this.agentId, groupId, historyLength: history.length },
       });
@@ -365,10 +371,12 @@ export class AgentRunner {
           bus: this.bus,
           ensureRunner: this.ensureRunner,
           wakeAgent: this.wakeAgent,
+          events: this.events,
         };
 
         // Emit tool_call.start UI event
-        getWorkspaceUIBus().emit(input.workspaceId, {
+        this.events.emit({
+          workspaceId: input.workspaceId,
           event: "ui.agent.tool_call.start",
           data: {
             workspaceId: input.workspaceId,
@@ -387,7 +395,8 @@ export class AgentRunner {
         }
 
         // Emit tool_call.done UI event
-        getWorkspaceUIBus().emit(input.workspaceId, {
+        this.events.emit({
+          workspaceId: input.workspaceId,
           event: "ui.agent.tool_call.done",
           data: {
             workspaceId: input.workspaceId,
@@ -408,7 +417,7 @@ export class AgentRunner {
             tool_call_name: call.name,
           },
         });
-        void appendAgentStreamEvent({
+        this.logger.stream({
           agentId: this.agentId,
           round,
           kind: "tool_result",

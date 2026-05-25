@@ -1,5 +1,4 @@
-import { store } from "@/lib/storage";
-import { getWorkspaceUIBus } from "../ui-bus";
+import { listGroups, listGroupMemberIds, addGroupMembers, mergeDuplicateExactP2PGroups, createGroup, findLatestExactP2PGroupId } from "@/services/group-service";
 import { parseArgs, requireParam, requireUuid, requireAllUuids, requireGroupMembership } from "./validate";
 import type { RuntimeTool } from "./types";
 
@@ -15,7 +14,7 @@ export const groupTools: RuntimeTool[] = [
       },
     },
     async execute(_call, context) {
-      const groups = await store.listGroups({ workspaceId: context.workspaceId, agentId: context.agentId });
+      const groups = await listGroups({ workspaceId: context.workspaceId, agentId: context.agentId });
       return { ok: true, groups };
     },
   },
@@ -43,7 +42,7 @@ export const groupTools: RuntimeTool[] = [
       if (missing) return missing;
       const notUuid = requireUuid(groupId, "groupId", "Use list_groups to find valid groupIds.");
       if (notUuid) return notUuid;
-      const members = await store.listGroupMemberIds({ groupId });
+      const members = await listGroupMemberIds({ groupId });
       const denied = requireGroupMembership(members, context.agentId);
       if (denied) return denied;
       return { ok: true, members };
@@ -82,15 +81,16 @@ export const groupTools: RuntimeTool[] = [
       if (notUuid) return notUuid;
       const invalidIds = requireAllUuids(memberIds, "memberIds");
       if (invalidIds) return invalidIds;
-      const members = await store.listGroupMemberIds({ groupId });
+      const members = await listGroupMemberIds({ groupId });
       const denied = requireGroupMembership(members, context.agentId);
       if (denied) return denied;
       const toAdd = memberIds.filter((id) => !members.includes(id));
       if (toAdd.length === 0) {
         return { ok: true, added: [] };
       }
-      await store.addGroupMembers({ groupId, userIds: toAdd });
-      getWorkspaceUIBus().emit(context.workspaceId, {
+      await addGroupMembers({ groupId, userIds: toAdd });
+      context.events.emit({
+        workspaceId: context.workspaceId,
         event: "ui.group.updated",
         data: { workspaceId: context.workspaceId, groupId, addedMembers: toAdd },
       });
@@ -127,37 +127,39 @@ export const groupTools: RuntimeTool[] = [
       let groupId = "";
       let groupName: string | null = args.name ?? null;
       if (finalMemberIds.length === 2) {
-        const existing = await store.findLatestExactP2PGroupId({
+        const existing = await findLatestExactP2PGroupId({
           workspaceId: context.workspaceId,
           memberA: finalMemberIds[0]!,
           memberB: finalMemberIds[1]!,
           preferredName: args.name ?? null,
         });
         groupId =
-          (await store.mergeDuplicateExactP2PGroups({
+          (await mergeDuplicateExactP2PGroups({
             workspaceId: context.workspaceId,
             memberA: finalMemberIds[0]!,
             memberB: finalMemberIds[1]!,
             preferredName: args.name ?? null,
           })) ??
           (
-            await store.createGroup({
+            await createGroup({
               workspaceId: context.workspaceId,
               memberIds: finalMemberIds,
               name: args.name ?? undefined,
             })
           ).id;
         if (!existing) {
-          getWorkspaceUIBus().emit(context.workspaceId, {
+          context.events.emit({
+            workspaceId: context.workspaceId,
             event: "ui.group.created",
             data: { workspaceId: context.workspaceId, group: { id: groupId, name: groupName, memberIds: finalMemberIds } },
           });
         }
       } else {
-        const created = await store.createGroup({ workspaceId: context.workspaceId, memberIds: finalMemberIds, name: args.name ?? undefined });
+        const created = await createGroup({ workspaceId: context.workspaceId, memberIds: finalMemberIds, name: args.name ?? undefined });
         groupId = created.id;
         groupName = created.name;
-        getWorkspaceUIBus().emit(context.workspaceId, {
+        context.events.emit({
+          workspaceId: context.workspaceId,
           event: "ui.group.created",
           data: { workspaceId: context.workspaceId, group: { id: groupId, name: groupName, memberIds: finalMemberIds } },
         });

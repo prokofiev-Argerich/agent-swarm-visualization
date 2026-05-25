@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { store } from "@/lib/storage";
 import { writeUploadedFile } from "@/lib/file-service";
 import { ALLOWED_FILE_EXTENSIONS, MAX_FILE_SIZE, MAX_FILE_CONTENT_CHARS } from "@/lib/constants";
-import { getWorkspaceUIBus } from "../ui-bus";
 import { parseArgs, requireParam, requireUuid } from "./validate";
 import type { RuntimeTool } from "./types";
 
@@ -53,7 +52,8 @@ export const fileTools: RuntimeTool[] = [
         const content = await fs.readFile(filePath, "utf-8");
         const truncated = content.length > MAX_FILE_CONTENT_CHARS;
         const resultContent = truncated ? content.slice(0, MAX_FILE_CONTENT_CHARS) : content;
-        getWorkspaceUIBus().emit(context.workspaceId, {
+        context.events.emit({
+          workspaceId: context.workspaceId,
           event: "ui.agent.file.read",
           data: {
             workspaceId: context.workspaceId,
@@ -147,7 +147,8 @@ export const fileTools: RuntimeTool[] = [
         };
       }
 
-      getWorkspaceUIBus().emit(context.workspaceId, {
+      context.events.emit({
+        workspaceId: context.workspaceId,
         event: "ui.db.write",
         data: {
           workspaceId: context.workspaceId,

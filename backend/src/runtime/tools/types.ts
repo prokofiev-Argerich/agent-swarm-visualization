@@ -1,5 +1,6 @@
 import type { UUID, ToolCall } from "../types";
 import type { AgentEventBus } from "../event-bus";
+import type { RuntimeEventSink } from "../ports";
 
 export type ToolResult = { ok: boolean; error?: string; [key: string]: unknown };
 
@@ -12,6 +13,7 @@ export type ToolContext = {
   bus: AgentEventBus;
   ensureRunner(agentId: UUID): void;
   wakeAgent(agentId: UUID): void;
+  events: RuntimeEventSink;
 };
 
 export interface RuntimeTool {

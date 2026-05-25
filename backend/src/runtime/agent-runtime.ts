@@ -1,19 +1,30 @@
-import { store } from "@/lib/storage";
+import { listAgents } from "@/services/agent-service";
 import { AgentEventBus } from "./event-bus";
 import { AgentRunner } from "./agent-runner";
+import { AgentWakeScheduler } from "./scheduler/agent-wake-scheduler";
+import { workspaceUIEventSink } from "./adapters/workspace-ui-event-sink";
+import { agentFileLogger } from "./adapters/agent-file-logger";
 import type { UUID } from "./types";
 
 export class AgentRuntime {
   private readonly runners = new Map<UUID, AgentRunner>();
   public readonly bus = new AgentEventBus();
+  private readonly scheduler: AgentWakeScheduler;
   private bootstrapped = false;
   static readonly VERSION = 2;
+
+  constructor() {
+    this.scheduler = new AgentWakeScheduler(
+      (id) => this.ensureRunner(id),
+      (id, reason) => this.ensureRunner(id).wakeup(reason)
+    );
+  }
 
   async bootstrap() {
     if (this.bootstrapped) return;
     this.bootstrapped = true;
 
-    const agents = await store.listAgents();
+    const agents = await listAgents();
     for (const a of agents) {
       if (a.role === "human") continue;
       this.ensureRunner(a.id);
@@ -31,7 +42,9 @@ export class AgentRuntime {
       },
       (id) => {
         this.ensureRunner(id).wakeup("manual");
-      }
+      },
+      workspaceUIEventSink,
+      agentFileLogger,
     );
     this.runners.set(agentId, runner);
     runner.start();
@@ -40,27 +53,18 @@ export class AgentRuntime {
 
   async wakeAgentsForGroup(groupId: UUID, senderId: UUID) {
     await this.bootstrap();
-    const memberIds = await store.listGroupMemberIds({ groupId });
-
-    for (const memberId of memberIds) {
-      if (memberId === senderId) continue;
-      const role = await store.getAgentRole({ agentId: memberId }).catch(() => null);
-      if (role === "human" || role === null) continue;
-      this.ensureRunner(memberId).wakeup("group_message");
-    }
+    return this.scheduler.wakeAgentsForGroup({ groupId, senderId });
   }
 
   async wakeAgent(agentId: UUID, reason: "direct_message" | "context_stream" = "direct_message") {
     await this.bootstrap();
-    const role = await store.getAgentRole({ agentId }).catch(() => null);
-    if (role === "human" || role === null) return;
-    this.ensureRunner(agentId).wakeup(reason);
+    return this.scheduler.wakeAgent({ agentId, reason });
   }
 
   async interruptAll(input?: { workspaceId?: UUID }) {
     await this.bootstrap();
     const workspaceId = input?.workspaceId?.trim();
-    const agents = await store.listAgents(workspaceId ? { workspaceId } : undefined);
+    const agents = await listAgents(workspaceId ? { workspaceId } : undefined);
     const agentIds = agents.filter((agent) => agent.role !== "human").map((agent) => agent.id);
 
     for (const agentId of agentIds) {
@@ -72,9 +76,9 @@ export class AgentRuntime {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __swarmIdeRuntime: AgentRuntime | undefined;
-  // eslint-disable-next-line no-var
+   
   var __swarmIdeRuntimeVersion: number | undefined;
 }
 

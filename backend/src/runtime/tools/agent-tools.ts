@@ -1,5 +1,4 @@
-import { store } from "@/lib/storage";
-import { getWorkspaceUIBus } from "../ui-bus";
+import { listAgentsMeta, createSubAgentWithP2P } from "@/services/agent-service";
 import { parseArgs, requireParam } from "./validate";
 import type { RuntimeTool } from "./types";
 
@@ -36,7 +35,7 @@ export const agentTools: RuntimeTool[] = [
       const missing = requireParam(role, "role");
       if (missing) return missing;
 
-      const created = await store.createSubAgentWithP2P({
+      const created = await createSubAgentWithP2P({
         workspaceId: context.workspaceId,
         creatorId: context.agentId,
         role,
@@ -44,12 +43,14 @@ export const agentTools: RuntimeTool[] = [
         collaborationGroupId: context.currentGroupId ?? undefined,
       });
       context.ensureRunner(created.agentId);
-      getWorkspaceUIBus().emit(context.workspaceId, {
+      context.events.emit({
+        workspaceId: context.workspaceId,
         event: "ui.agent.created",
         data: { workspaceId: context.workspaceId, agent: { id: created.agentId, role, parentId: context.agentId } },
       });
       if (created.collaborationGroupId) {
-        getWorkspaceUIBus().emit(context.workspaceId, {
+        context.events.emit({
+          workspaceId: context.workspaceId,
           event: "ui.group.updated",
           data: { workspaceId: context.workspaceId, groupId: created.collaborationGroupId, addedMembers: [created.agentId] },
         });
@@ -68,7 +69,7 @@ export const agentTools: RuntimeTool[] = [
       },
     },
     async execute(_call, context) {
-      const agents = await store.listAgentsMeta({ workspaceId: context.workspaceId });
+      const agents = await listAgentsMeta({ workspaceId: context.workspaceId });
       return { ok: true, agents };
     },
   },
