@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { api } from "../utils";
 import type { AgentMeta, FileItem, Group, WorkspaceDefaults } from "../types";
 
@@ -49,7 +49,8 @@ export function useWorkspaceData(
     return map;
   }, [agents]);
 
-  useEffect(() => {
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useLayoutEffect(() => {
     if (!session) return;
     setGroups([]);
     setAgents([]);
@@ -58,6 +59,7 @@ export function useWorkspaceData(
     void refreshAgents(session);
     void refreshFiles(session);
   }, [session, refreshGroups, refreshAgents, refreshFiles]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return {
     groups,

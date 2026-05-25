@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiPaths } from "@/lib/api-paths";
 import { api } from "../utils";
 import type { AgentStreamEvent } from "../types";
@@ -10,6 +10,7 @@ export function useAgentStream(args: {
   activeGroupIdRef: React.MutableRefObject<string | null>;
   onDone: () => void;
 }) {
+  const { streamAgentId, activeGroupIdRef, onDone } = args;
   const [contentStream, setContentStream] = useState("");
   const [reasoningStream, setReasoningStream] = useState("");
   const [toolStream, setToolStream] = useState("");
@@ -60,7 +61,7 @@ export function useAgentStream(args: {
       toolCallBuffersRef.current = new Map();
       toolResultBuffersRef.current = new Map();
 
-      const groupId = args.activeGroupIdRef.current;
+      const groupId = activeGroupIdRef.current;
       const es = new EventSource(
         apiPaths.agentContextStream(agentId, { groupId: groupId ?? undefined })
       );
@@ -115,7 +116,7 @@ export function useAgentStream(args: {
           if (payload.event === "agent.done") {
             toolCallBuffersRef.current = new Map();
             toolResultBuffersRef.current = new Map();
-            args.onDone();
+            onDone();
             const doneAgentId = streamAgentIdRef.current;
             if (doneAgentId) void refreshLlmHistory(doneAgentId);
             return;
@@ -130,15 +131,16 @@ export function useAgentStream(args: {
 
       es.onerror = () => setAgentError("SSE disconnected");
     },
-    [args.activeGroupIdRef, args.onDone, refreshLlmHistory]
+    [activeGroupIdRef, onDone, refreshLlmHistory]
   );
 
-  useEffect(() => {
-    if (!args.streamAgentId) return;
-    connectAgentStream(args.streamAgentId);
-    setLlmHistory("");
-    void refreshLlmHistory(args.streamAgentId);
-  }, [args.streamAgentId, connectAgentStream, refreshLlmHistory]);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useLayoutEffect(() => {
+    if (!streamAgentId) return;
+    connectAgentStream(streamAgentId);
+    void refreshLlmHistory(streamAgentId);
+  }, [streamAgentId, connectAgentStream, refreshLlmHistory]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     return () => esRef.current?.close();

@@ -13,6 +13,7 @@ export function useUiStream(args: {
   scheduleWorkspaceRefresh: () => void;
   refreshFiles: (s: WorkspaceDefaults) => Promise<void>;
 }) {
+  const { session, activeGroupIdRef, groupsRef, agentRoleByIdRef, refreshMessages, scheduleWorkspaceRefresh, refreshFiles } = args;
   const [vizEvents, setVizEvents] = useState<VizEvent[]>([]);
   const [vizBeams, setVizBeams] = useState<VizBeam[]>([]);
   const [vizDebug, setVizDebug] = useState<VizDebugEntry[]>([]);
@@ -50,15 +51,15 @@ export function useUiStream(args: {
     if (typeof window !== "undefined") {
       (window as any).__imVizDebug = (window as any).__imVizDebug ?? [];
       (window as any).__imVizDebug.push(record);
-      // eslint-disable-next-line no-console
+       
       console.debug("[im-viz]", record);
     }
   }, []);
 
   useEffect(() => {
-    if (!args.session) return;
+    if (!session) return;
     uiEsRef.current?.close();
-    const es = new EventSource(`/api/ui-stream?workspaceId=${encodeURIComponent(args.session.workspaceId)}`);
+    const es = new EventSource(`/api/ui-stream?workspaceId=${encodeURIComponent(session.workspaceId)}`);
     uiEsRef.current = es;
 
     es.onmessage = (evt) => {
@@ -75,7 +76,7 @@ export function useUiStream(args: {
           const parentId = payload.data?.agent?.parentId as UUID | null | undefined;
           pushVizEvent(payload, `创建 ${role}`, "agent");
           if (agentId) {
-            const fromId = parentId || args.session!.humanAgentId;
+            const fromId = parentId || session!.humanAgentId;
             pushBeam({ fromId, toId: agentId, kind: "create", label: role });
           }
           if (agentId) {
@@ -85,7 +86,7 @@ export function useUiStream(args: {
           const senderId = payload.data?.message?.senderId as UUID | undefined;
           const groupId = payload.data?.groupId as UUID | undefined;
           const senderRole = senderId
-            ? args.agentRoleByIdRef.current.get(senderId) ?? senderId.slice(0, 6)
+            ? agentRoleByIdRef.current.get(senderId) ?? senderId.slice(0, 6)
             : "unknown";
           pushVizEvent(payload, `消息: ${senderRole}`, "message");
           logVizDebug({
@@ -95,14 +96,14 @@ export function useUiStream(args: {
               groupId,
               senderId,
               senderRole,
-              hasGroup: !!args.groupsRef.current.find((g) => g.id === groupId),
+              hasGroup: !!groupsRef.current.find((g) => g.id === groupId),
             },
           });
           if (senderId && groupId) {
             const payloadMembers = Array.isArray(payload.data?.memberIds) ? payload.data.memberIds : null;
             const groupMembers =
               payloadMembers ??
-              args.groupsRef.current.find((g) => g.id === groupId)?.memberIds ??
+              groupsRef.current.find((g) => g.id === groupId)?.memberIds ??
               [];
             const targetIds = groupMembers.filter((id: UUID) => id !== senderId);
             if (targetIds.length === 0) {
@@ -120,17 +121,17 @@ export function useUiStream(args: {
               });
             }
           }
-          // eslint-disable-next-line no-console
+           
           console.log("[ui.message.created]", {
             groupId,
-            activeGroupId: args.activeGroupIdRef.current,
-            match: groupId === args.activeGroupIdRef.current,
-            hasSession: !!args.session,
+            activeGroupId: activeGroupIdRef.current,
+            match: groupId === activeGroupIdRef.current,
+            hasSession: !!session,
             senderId,
             messageId: payload.data?.message?.id,
           });
-          if (groupId === args.activeGroupIdRef.current && args.session) {
-            void args.refreshMessages(args.session, groupId, {
+          if (groupId === activeGroupIdRef.current && session) {
+            void refreshMessages(session, groupId, {
               markRead: false,
               silent: true,
               skipGroupRefresh: true,
@@ -139,7 +140,7 @@ export function useUiStream(args: {
         } else if (payload.event === "ui.agent.llm.start" || payload.event === "ui.agent.llm.done") {
           const agentId = payload.data?.agentId as UUID | undefined;
           const role = agentId
-            ? args.agentRoleByIdRef.current.get(agentId) ?? agentId.slice(0, 6)
+            ? agentRoleByIdRef.current.get(agentId) ?? agentId.slice(0, 6)
             : "agent";
           const label = payload.event === "ui.agent.llm.start" ? `LLM 开始: ${role}` : `LLM 结束: ${role}`;
           pushVizEvent(payload, label, "llm");
@@ -156,7 +157,7 @@ export function useUiStream(args: {
           const agentId = payload.data?.agentId as UUID | undefined;
           const toolName = payload.data?.toolName ?? "tool";
           const role = agentId
-            ? args.agentRoleByIdRef.current.get(agentId) ?? agentId.slice(0, 6)
+            ? agentRoleByIdRef.current.get(agentId) ?? agentId.slice(0, 6)
             : "agent";
           const label =
             payload.event === "ui.agent.tool_call.start"
@@ -185,7 +186,7 @@ export function useUiStream(args: {
         } else if (payload.event === "ui.agent.error") {
           const agentId = payload.data?.agentId as UUID | undefined;
           if (agentId) {
-            const role = args.agentRoleByIdRef.current.get(agentId) ?? agentId.slice(0, 8);
+            const role = agentRoleByIdRef.current.get(agentId) ?? agentId.slice(0, 8);
             const msg = String(payload.data?.message ?? "").slice(0, 120);
             pushVizEvent(payload, `${role} 错误${msg ? ": " + msg : ""}`, "agent");
             setAgentStatusById((prev) => ({ ...prev, [agentId]: "ERROR" }));
@@ -194,14 +195,14 @@ export function useUiStream(args: {
           const table = payload.data?.table ?? "db";
           const action = payload.data?.action ?? "write";
           pushVizEvent(payload, `DB ${action}: ${table}`, "db");
-          if (table === "files" && args.session) {
-            void args.refreshFiles(args.session);
+          if (table === "files" && session) {
+            void refreshFiles(session);
           }
         }
       }
 
       // any change in workspace => refresh lists (cheap enough for MVP)
-      args.scheduleWorkspaceRefresh();
+      scheduleWorkspaceRefresh();
     };
     es.onerror = () => {
       // tolerate disconnects; user can refresh manually
@@ -212,13 +213,13 @@ export function useUiStream(args: {
     logVizDebug,
     pushBeam,
     pushVizEvent,
-    args.refreshMessages,
-    args.scheduleWorkspaceRefresh,
-    args.session,
-    args.refreshFiles,
-    args.activeGroupIdRef,
-    args.agentRoleByIdRef,
-    args.groupsRef,
+    refreshMessages,
+    scheduleWorkspaceRefresh,
+    session,
+    refreshFiles,
+    activeGroupIdRef,
+    agentRoleByIdRef,
+    groupsRef,
   ]);
 
   useEffect(() => {

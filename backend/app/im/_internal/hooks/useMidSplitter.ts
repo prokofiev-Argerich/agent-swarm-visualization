@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MID_CHAT_MIN_HEIGHT, MID_GRAPH_MIN_HEIGHT, MID_SPLITTER_SIZE } from "../constants";
 
 export function useMidSplitter() {
@@ -27,7 +27,7 @@ export function useMidSplitter() {
     midChatHeightRef.current = midChatHeight;
   }, [midChatHeight]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = midStackRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {

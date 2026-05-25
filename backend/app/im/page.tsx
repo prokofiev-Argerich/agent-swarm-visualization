@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { IMShell } from "./IMShell";
 import { FilePanel } from "./components/FilePanel";
@@ -73,7 +73,8 @@ function IMPageInner() {
   const { groups, agents, files, refreshGroups, refreshAgents, refreshFiles, agentRoleById, setGroups, setAgents } = ws;
   const { messages, setMessages, loadingOlder, phaseSummaries, expandedPhases, phaseMessages, refreshMessages, loadOlderMessages, togglePhaseExpand, messagesContainerRef, bottomRef } = msgs;
 
-  useEffect(() => { if (session) setActiveGroupId(session.defaultGroupId); }, [session]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useLayoutEffect(() => { if (session) setActiveGroupId(session.defaultGroupId); }, [session]);
 
   // --- Derived ---
   const groupByAgentId = useMemo(() => {
@@ -96,12 +97,14 @@ function IMPageInner() {
   }, [activeGroupId, groups, session]);
   // --- Stream hooks ---
   const onDoneRef = useRef<() => void>(() => {});
-  onDoneRef.current = () => {
-    const groupId = activeGroupIdRef.current;
-    const nextSession = loadSession();
-    if (nextSession && groupId) void refreshMessages(nextSession, groupId, { markRead: false });
-    if (nextSession) void refreshGroups(nextSession);
-  };
+  useEffect(() => {
+    onDoneRef.current = () => {
+      const groupId = activeGroupIdRef.current;
+      const nextSession = loadSession();
+      if (nextSession && groupId) void refreshMessages(nextSession, groupId, { markRead: false });
+      if (nextSession) void refreshGroups(nextSession);
+    };
+  }, [refreshMessages, refreshGroups]);
   const onDone = useCallback(() => onDoneRef.current(), []);
 
   const agentStream = useAgentStream({
@@ -110,7 +113,9 @@ function IMPageInner() {
     onDone,
   });
   const { contentStream, reasoningStream, toolStream, llmHistory, agentError, setAgentError, refreshLlmHistory, connectAgentStream } = agentStream;
-  refreshLlmHistoryRef.current = refreshLlmHistory;
+  useEffect(() => {
+    refreshLlmHistoryRef.current = refreshLlmHistory;
+  }, [refreshLlmHistory]);
 
   const scheduleWorkspaceRefresh = useCallback((opts?: { groups?: boolean; agents?: boolean; messages?: boolean; llmHistory?: boolean }) => {
     if (!session) return;
@@ -140,10 +145,33 @@ function IMPageInner() {
   const scrollToMessage = useScrollToMessage(messagesContainerRef);
 
   // --- Interaction hooks ---
-  const viz = useVizInteractions();
-  const mid = useMidSplitter();
+  const {
+    vizSize,
+    vizScale,
+    vizOffset,
+    vizIsPanning,
+    setVizScale,
+    setVizOffset,
+    setVizIsPanning,
+    vizRef,
+    vizPanStartRef,
+    nodeOffsets,
+    collapsedAgents,
+    toggleAgentCollapsed,
+    handleNodePointerDown,
+    handleNodeMouseDown,
+    handleNodeTouchStart,
+  } = useVizInteractions();
+  const {
+    midStackRef,
+    midStackHeight,
+    midChatHeight,
+    handleMidResizeStart,
+    handleMidMouseDown,
+    handleMidTouchStart,
+  } = useMidSplitter();
   const rp = useRightPanels();
-  const vizLayout = useVizLayout(agents, session, viz.vizSize, viz.nodeOffsets);
+  const vizLayout = useVizLayout(agents, session, vizSize, nodeOffsets);
 
   // --- Agent tree ---
   const agentTreeRows = useMemo(() => {
@@ -169,7 +197,7 @@ function IMPageInner() {
     const rows: Array<{ agent: AgentMeta; group: Group | null; depth: number; hasChildren: boolean; collapsed: boolean; guides: boolean[]; isLast: boolean }> = [];
     const walk = (agent: AgentMeta, depth: number, guides: boolean[], isLast: boolean) => {
       const children = childrenById.get(agent.id) ?? [];
-      const collapsed = !!viz.collapsedAgents[agent.id];
+      const collapsed = !!collapsedAgents[agent.id];
       rows.push({ agent, group: groupByAgentId.get(agent.id) ?? null, depth, hasChildren: children.length > 0, collapsed, guides, isLast });
       if (collapsed) return;
       const nextGuides = [...guides, !isLast];
@@ -177,7 +205,7 @@ function IMPageInner() {
     };
     roots.forEach((root, index) => walk(root, 0, [], index === roots.length - 1));
     return rows;
-  }, [agents, session, groupByAgentId, viz.collapsedAgents]);
+  }, [agents, session, groupByAgentId, collapsedAgents]);
 
   const extraGroups = useMemo(() => {
     if (!session) return groups;
@@ -207,7 +235,7 @@ function IMPageInner() {
   // Config
   useEffect(() => { api<{ tokenLimit: number }>("/api/config").then((c) => setTokenLimit(c.tokenLimit)).catch(() => setTokenLimit(100000)); }, []);
 
-  const grProps = { activeGroupId, tokenLimit, session, getGroupLabel, onSelect: setActiveGroupId, onDeleteAgent: deleteAgent, onDeleteGroup: deleteGroup, onToggleCollapse: viz.toggleAgentCollapsed };
+  const grProps = { activeGroupId, tokenLimit, session, getGroupLabel, onSelect: setActiveGroupId, onDeleteAgent: deleteAgent, onDeleteGroup: deleteGroup, onToggleCollapse: toggleAgentCollapsed };
 
   // --- JSX ---
   return (
@@ -231,7 +259,11 @@ function IMPageInner() {
               {extraGroups.map((g) => <GroupRow key={g.id} g={g} {...grProps} />)}
             </>}
           </div>
-          {session && <FilePanel files={files} workspaceId={session.workspaceId} showFilesPanel={showFilesPanel} onTogglePanel={() => setShowFilesPanel((p) => !p)} onUploadClick={() => fileInputRef.current?.click()} fileInputRef={fileInputRef} onFileInputChange={onFileInputChange} onInsertFile={insertFileToDraft} />}
+          {session && <FilePanel files={files} workspaceId={session.workspaceId} showFilesPanel={showFilesPanel} onTogglePanel={() => setShowFilesPanel((p) => !p)} onUploadClick={() => fileInputRef.current?.click()} fileInputRef={fileInputRef} onFileInputChange={onFileInputChange} onInsertFile={insertFileToDraft} onDeleteFile={(fileId) => {
+            void fetch(`/api/files/${fileId}?workspaceId=${session.workspaceId}`, { method: "DELETE" }).then((res) => {
+              if (res.ok) void refreshFiles(session);
+            });
+          }} />}
         </aside>
       }
       mid={
@@ -243,11 +275,11 @@ function IMPageInner() {
               <div className="muted" style={{ fontSize: 12 }}>{status !== "idle" ? `${status}...` : ""}</div>
             </div>
           </div>
-          <div className="mid-stack" ref={mid.midStackRef} style={{ gridTemplateRows: mid.midStackHeight > 0 ? `${Math.max(0, Math.round(mid.midChatHeight))}px ${MID_SPLITTER_SIZE}px minmax(${MID_GRAPH_MIN_HEIGHT}px, 1fr)` : `1fr ${MID_SPLITTER_SIZE}px minmax(${MID_GRAPH_MIN_HEIGHT}px, 1fr)` }}>
+          <div className="mid-stack" ref={midStackRef} style={{ gridTemplateRows: midStackHeight > 0 ? `${Math.max(0, Math.round(midChatHeight))}px ${MID_SPLITTER_SIZE}px minmax(${MID_GRAPH_MIN_HEIGHT}px, 1fr)` : `1fr ${MID_SPLITTER_SIZE}px minmax(${MID_GRAPH_MIN_HEIGHT}px, 1fr)` }}>
             <MessageTimeline displayItems={displayItems} loadingOlder={loadingOlder} session={session} agentRoleById={agentRoleById} togglePhaseExpand={togglePhaseExpand} containerRef={messagesContainerRef} bottomRef={bottomRef} />
-            <div className="mid-resizer" onPointerDown={mid.handleMidResizeStart} onMouseDown={mid.handleMidMouseDown} onTouchStart={mid.handleMidTouchStart} />
+            <div className="mid-resizer" onPointerDown={handleMidResizeStart} onMouseDown={handleMidMouseDown} onTouchStart={handleMidTouchStart} />
             <div className="viz-shell">
-              <LegacyVizCanvas vizSize={viz.vizSize} vizScale={viz.vizScale} vizOffset={viz.vizOffset} vizIsPanning={viz.vizIsPanning} setVizScale={viz.setVizScale} setVizOffset={viz.setVizOffset} setVizIsPanning={viz.setVizIsPanning} vizRef={viz.vizRef} vizPanStartRef={viz.vizPanStartRef} vizLayout={vizLayout} vizBeams={vizBeams} agentStatusById={agentStatusById} streamAgentId={streamAgentId} handleNodePointerDown={viz.handleNodePointerDown} handleNodeMouseDown={viz.handleNodeMouseDown} handleNodeTouchStart={viz.handleNodeTouchStart} />
+              <LegacyVizCanvas vizSize={vizSize} vizScale={vizScale} vizOffset={vizOffset} vizIsPanning={vizIsPanning} setVizScale={setVizScale} setVizOffset={setVizOffset} setVizIsPanning={setVizIsPanning} vizRef={vizRef} vizPanStartRef={vizPanStartRef} vizLayout={vizLayout} vizBeams={vizBeams} agentStatusById={agentStatusById} streamAgentId={streamAgentId} handleNodePointerDown={handleNodePointerDown} handleNodeMouseDown={handleNodeMouseDown} handleNodeTouchStart={handleNodeTouchStart} />
               <VizEventsPanel vizEvents={vizEvents} collapsed={vizEventsCollapsed} onCollapse={() => setVizEventsCollapsed(true)} onExpand={() => setVizEventsCollapsed(false)} />
             </div>
           </div>

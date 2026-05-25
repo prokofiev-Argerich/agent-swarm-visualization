@@ -1,8 +1,8 @@
 "use client";
 
 import type { ChangeEvent, RefObject } from "react";
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Eye, EyeOff, FileText, Plus } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Copy, Eye, EyeOff, FileText, Plus, Trash2 } from "lucide-react";
 
 import { apiPaths } from "@/lib/api-paths";
 import { HUD } from "./uiTokens";
@@ -48,6 +48,7 @@ export function FilePanel({
   fileInputRef,
   onFileInputChange,
   onInsertFile,
+  onDeleteFile,
 }: {
   files: FileItem[];
   workspaceId: string;
@@ -57,6 +58,7 @@ export function FilePanel({
   fileInputRef: RefObject<HTMLInputElement | null>;
   onFileInputChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onInsertFile: (file: FileItem) => void;
+  onDeleteFile?: (fileId: string) => void;
 }) {
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState<string>("");
@@ -95,12 +97,14 @@ export function FilePanel({
   );
 
   // Reset preview when file disappears
-  useEffect(() => {
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useLayoutEffect(() => {
     if (previewFileId && !files.some((f) => f.fileId === previewFileId)) {
       setPreviewFileId(null);
       setPreviewContent("");
     }
   }, [files, previewFileId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div
@@ -281,6 +285,27 @@ export function FilePanel({
                     >
                       <Copy size={11} />
                     </button>
+                    {onDeleteFile && (
+                      <button
+                        style={ICON_BTN_STYLE}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirm(`Delete ${f.filename}?`)) return;
+                          onDeleteFile(f.fileId);
+                        }}
+                        title="Delete file"
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = HUD.accentRed;
+                          e.currentTarget.style.borderColor = HUD.panelBorderStrong;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = HUD.textMuted;
+                          e.currentTarget.style.borderColor = HUD.panelBorder;
+                        }}
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
                   </div>
                   {isOpen && (
                     <div

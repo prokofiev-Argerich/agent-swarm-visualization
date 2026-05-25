@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { apiPaths } from "@/lib/api-paths";
 import { api, loadSession, saveSession } from "../utils";
 import type { WorkspaceDefaults } from "../types";
@@ -68,11 +68,13 @@ export function useSession(
     setStatus("idle");
   }, [workspaceOverrideId, setStatus, setError]);
 
-  useEffect(() => {
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useLayoutEffect(() => {
     void bootstrap().catch((e) =>
       setError(e instanceof Error ? e.message : String(e))
     );
   }, [bootstrap, setError]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const createWorkspace = useCallback(
     async (name?: string) => {

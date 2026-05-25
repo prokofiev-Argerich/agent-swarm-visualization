@@ -56,14 +56,14 @@ export function useCallbacks(args: {
     setAgents((prev) => prev.filter((a) => a.id !== agentId));
     setGroups((prev) => prev.filter((g) => !g.memberIds.includes(agentId)));
     if (activeGroupId && groups.find((g) => g.id === activeGroupId)?.memberIds.includes(agentId)) setActiveGroupId(null);
-  }, [activeGroupId, groups, setAgents, setGroups]);
+  }, [activeGroupId, groups, setAgents, setGroups, setActiveGroupId]);
 
   const deleteGroup = useCallback(async (groupId: string, workspaceId: string) => {
     if (!confirm("确定要删除这个群组吗？群组内的所有消息也会被删除。")) return;
     await api(`/api/groups/${encodeURIComponent(groupId)}?workspaceId=${encodeURIComponent(workspaceId)}`, { method: "DELETE" });
     setGroups((prev) => prev.filter((g) => g.id !== groupId));
     if (activeGroupId === groupId) { setActiveGroupId(null); setMessages([]); }
-  }, [activeGroupId, setGroups, setMessages]);
+  }, [activeGroupId, setGroups, setMessages, setActiveGroupId]);
 
   const deleteWorkspace = useCallback(async (workspaceId: string) => {
     if (!confirm("⚠️ 确定要删除整个 Workspace 吗？所有 Agent、群组和消息都会被永久删除！")) return;

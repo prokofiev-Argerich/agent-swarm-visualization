@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function useVizInteractions() {
   const [vizSize, setVizSize] = useState({ width: 640, height: 260 });
@@ -18,7 +18,7 @@ export function useVizInteractions() {
     nodeOffsetsRef.current = nodeOffsets;
   }, [nodeOffsets]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = vizRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {

@@ -43,7 +43,7 @@ export function useCausality(
 
   useEffect(() => {
     if (selectedMessageId && !messageById.has(selectedMessageId)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setSelectedMessageId(null);
     }
   }, [selectedMessageId, messageById, setSelectedMessageId]);

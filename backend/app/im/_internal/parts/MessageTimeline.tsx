@@ -40,7 +40,7 @@ export function MessageTimeline({
           );
         }
         if (item.kind === "phase-card") {
-          return <PhaseCard summary={item.summary} expanded={item.expanded} onToggle={togglePhaseExpand} />;
+          return <PhaseCard key={item.summary.id} summary={item.summary} expanded={item.expanded} onToggle={togglePhaseExpand} />;
         }
         // kind === "message"
         const m = item.message;

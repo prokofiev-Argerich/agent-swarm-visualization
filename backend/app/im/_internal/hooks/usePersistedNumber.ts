@@ -10,14 +10,21 @@ export function usePersistedNumber(
   const hydrated = useRef(false);
 
   useEffect(() => {
-    try {
-      const raw = Number(localStorage.getItem(key) ?? "");
-      const min = opts?.min ?? -Infinity;
-      const max = opts?.max ?? Infinity;
-      if (Number.isFinite(raw) && raw >= min && raw <= max) setValue(raw);
-    } catch {}
-    hydrated.current = true;
-  }, [key]);
+    let cancelled = false;
+    const run = () => {
+      try {
+        const raw = Number(localStorage.getItem(key) ?? "");
+        const min = opts?.min ?? -Infinity;
+        const max = opts?.max ?? Infinity;
+        if (Number.isFinite(raw) && raw >= min && raw <= max) {
+          if (!cancelled) setValue(raw);
+        }
+      } catch {}
+      hydrated.current = true;
+    };
+    queueMicrotask(run);
+    return () => { cancelled = true; };
+  }, [key, opts?.min, opts?.max]);
 
   useEffect(() => {
     if (!hydrated.current) return;

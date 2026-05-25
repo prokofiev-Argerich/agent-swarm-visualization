@@ -25,7 +25,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    // eslint-disable-next-line no-console
+     
     console.error("API failed", { url: path, status: res.status, body: text.slice(0, 500) });
     throw new Error(`${res.status} ${res.statusText} ${text.slice(0, 200)}`);
   }

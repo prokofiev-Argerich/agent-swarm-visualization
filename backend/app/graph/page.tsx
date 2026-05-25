@@ -226,32 +226,36 @@ export default function GraphPage() {
     });
   }, []);
 
-  const fetchGraph = useCallback(async () => {
-    if (!session) return;
-    try {
-      const q = new URLSearchParams({
-        workspaceId: session.workspaceId,
-        limitMessages: "2000",
-      });
-      const res = await api<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
-        `/api/agent-graph?${q.toString()}`
-      );
-      setRawNodes(res.nodes);
-      setRawEdges(res.edges);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [session]);
-
   useEffect(() => {
+    let cancelled = false;
+    const fetchGraph = async () => {
+      if (!session) return;
+      try {
+        const q = new URLSearchParams({
+          workspaceId: session.workspaceId,
+          limitMessages: "2000",
+        });
+        const res = await api<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
+          `/api/agent-graph?${q.toString()}`
+        );
+        if (cancelled) return;
+        setRawNodes(res.nodes);
+        setRawEdges(res.edges);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    };
     void fetchGraph();
     const t = setInterval(() => {
       void fetchGraph();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNow(Date.now());
     }, 5000);
-    return () => clearInterval(t);
-  }, [fetchGraph]);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [session]);
 
   // SSE: infer agent status from ui events
   useEffect(() => {

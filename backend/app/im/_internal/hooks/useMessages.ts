@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiPaths } from "@/lib/api-paths";
 import { api } from "../utils";
 import type { Group, Message, PhaseSummary, WorkspaceDefaults } from "../types";
@@ -54,7 +54,7 @@ export function useMessages(args: {
           limit: 50,
         })
       );
-      // eslint-disable-next-line no-console
+       
       console.log("[loadInitialMessages]", {
         groupId,
         count: result.messages.length,
@@ -95,7 +95,7 @@ export function useMessages(args: {
         })
       );
       // Merge: keep existing messages, add new ones by id
-      // eslint-disable-next-line no-console
+       
       console.log("[refreshMessages]", {
         groupId,
         returnedCount: result.messages.length,
@@ -104,7 +104,7 @@ export function useMessages(args: {
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => m.id));
         const newMsgs = result.messages.filter((m) => !existingIds.has(m.id));
-        // eslint-disable-next-line no-console
+         
         console.log("[refreshMessages:merge]", { existing: prev.length, new: newMsgs.length });
         return [...prev, ...newMsgs];
       });
@@ -187,12 +187,14 @@ export function useMessages(args: {
   );
 
   // Load messages when activeGroupId changes
-  useEffect(() => {
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useLayoutEffect(() => {
     if (!activeGroupId || !session) return;
     void loadInitialMessages(session, activeGroupId, { markRead: true }).catch((e) =>
       console.error(e)
     );
   }, [activeGroupId, loadInitialMessages, session]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Scroll handler for loading older messages
   useEffect(() => {
