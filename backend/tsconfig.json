@@ -35,6 +35,9 @@
       "@/server/*": [
         "./src/server/*"
       ],
+      "@/services/*": [
+        "./src/services/*"
+      ],
       "@/app/*": [
         "./app/*"
       ]
