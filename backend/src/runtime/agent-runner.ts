@@ -1,4 +1,5 @@
 import { store } from "@/lib/storage";
+import { SILENCE_POLICY } from "@/lib/storage/shared";
 import { AgentEventBus } from "./event-bus";
 import { createDeferred, safeJsonParse } from "./utils";
 import { buildSkillsBlock, historyHasSkills } from "./context/skills-context";
@@ -190,6 +191,7 @@ export class AgentRunner {
             `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.\n` +
             `If you need to run shell commands, use the bash tool.\n` +
             `If you need to read a file that was uploaded to this workspace, use the read_file tool with the fileId (never a filesystem path).` +
+            SILENCE_POLICY +
             (skillsBlock ? `\n\n${skillsBlock}` : ""),
         });
       } else if (skillsBlock && !hasSkills) {
@@ -444,6 +446,16 @@ const META_ACKNOWLEDGMENT_PATTERNS = [
   /已回复/,
   /already (replied|sent|responded)/i,
   /no need to (send|reply)/i,
+  /我已就绪/,
+  /已就绪/,
+  /准备好了/,
+  /收到[，,\s]*(等待下一步|待命|明白)?/,
+  /全员就绪/,
+  /无需回复/,
+  /我将保持沉默/,
+  /不需要进一步操作/,
+  /standby/i,
+  /^(ready|acknowledged|waiting for next step)[.!]?$/i,
 ];
 
 function isMetaAcknowledgment(text: string): boolean {

@@ -32,6 +32,31 @@ export function uuid(): UUID {
   return crypto.randomUUID();
 }
 
+export const SILENCE_POLICY = [
+  "",
+  "## Silence Policy",
+  "",
+  "Do NOT reply to pure acknowledgement, readiness, or standby messages.",
+  "",
+  "If the latest unread messages are ONLY confirmations like the following, produce no user-facing content and do NOT call send_group_message or send_direct_message:",
+  "- 我已就绪 / 已就绪 / 准备好了",
+  "- 收到 / 收到，等待下一步",
+  "- 全员就绪",
+  "- standby / ready / acknowledged / waiting for next step",
+  "",
+  "Do not reply just to confirm that you are ready.",
+  "Do not reply just to confirm that you received another agent's confirmation.",
+  "Only send a message when there is a new task, a question, a decision request, a direct mention requiring your input, or a concrete action to perform.",
+  "",
+  "Never send meta messages such as:",
+  "- 无需回复",
+  "- 我将保持沉默",
+  "- 不需要进一步操作",
+  "- 已直接回复客户，无需再次发送",
+  "",
+  "In group coordination, one concise readiness message is allowed ONLY when explicitly asked by a human or coordinator. After that, do not keep acknowledging other readiness messages.",
+].join("\n");
+
 const PHASE_MANAGEMENT_ROLES = new Set([
   "orchestrator",
   "productmanager",
@@ -88,7 +113,8 @@ export function initialAgentHistory(input: {
     `If you need to coordinate with other agents, you may use tools like self, list_agents, create, send, list_groups, list_group_members, add_group_members, create_group, send_group_message, send_direct_message, and get_group_messages.\n` +
     `When creating a group with create_group, give it a concise, meaningful name using member roles (e.g. "PM+DevLead", "Review-QA+UX"). Avoid generic names like "full-mesh" or "group-1".\n` +
     `After creating sub-agents with the "create" tool, use add_group_members to bring them into the same group so they can collaborate.\n` +
-    `If you need to read a file that was uploaded to this workspace, use the read_file tool with the fileId (never a filesystem path).`;
+    `If you need to read a file that was uploaded to this workspace, use the read_file tool with the fileId (never a filesystem path).` +
+    SILENCE_POLICY;
 
   const history: Array<{ role: "system"; content: string }> = [{ role: "system", content }];
 
