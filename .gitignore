@@ -26,3 +26,12 @@ backend/workspaces/
 tmp/
 .gemini/
 .mcp.json
+.agents/
+.codex/
+
+# Root-level ad-hoc markdown work products (Claude Code session artifacts)
+/*-plan.md
+/*-status.md
+/*-todos-updated.md
+/WORK_LOG.md
+/CODEBASE_SURVEY.md
