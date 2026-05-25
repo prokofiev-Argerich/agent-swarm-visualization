@@ -1,13 +1,13 @@
 export const runtime = "nodejs";
 
-import { store } from "@/lib/storage";
+import { listGroups, mergeDuplicateExactP2PGroups, createGroup } from "@/services/group-service";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
   const agentId = url.searchParams.get("agentId") ?? undefined;
 
-  const groups = await store.listGroups({ workspaceId, agentId });
+  const groups = await listGroups({ workspaceId, agentId });
   return Response.json({ groups });
 }
 
@@ -20,14 +20,14 @@ export async function POST(req: Request) {
 
   if (body.memberIds.length === 2) {
     const groupId =
-      (await store.mergeDuplicateExactP2PGroups({
+      (await mergeDuplicateExactP2PGroups({
         workspaceId: body.workspaceId,
         memberA: body.memberIds[0]!,
         memberB: body.memberIds[1]!,
         preferredName: body.name ?? null,
       })) ??
       (
-        await store.createGroup({
+        await createGroup({
           workspaceId: body.workspaceId,
           memberIds: body.memberIds,
           name: body.name ?? undefined,
@@ -37,6 +37,6 @@ export async function POST(req: Request) {
     return Response.json({ id: groupId, name: body.name ?? null }, { status: 201 });
   }
 
-  const group = await store.createGroup(body);
+  const group = await createGroup(body);
   return Response.json(group, { status: 201 });
 }

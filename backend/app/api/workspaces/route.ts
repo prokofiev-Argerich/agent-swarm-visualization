@@ -1,10 +1,10 @@
 export const runtime = "nodejs";
 
-import { store } from "@/lib/storage";
+import { listWorkspaces, createWorkspaceWithDefaults } from "@/services/workspace-service";
 
 export async function GET() {
   try {
-    const workspaces = await store.listWorkspaces();
+    const workspaces = await listWorkspaces();
     return Response.json({ workspaces });
   } catch (e) {
     return Response.json(
@@ -21,7 +21,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as { name?: string } | null;
-    const result = await store.createWorkspaceWithDefaults({
+    const result = await createWorkspaceWithDefaults({
       name: body?.name ?? "Default Workspace",
     });
     return Response.json(result, { status: 201 });

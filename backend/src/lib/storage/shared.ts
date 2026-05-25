@@ -2,11 +2,21 @@ import { ensureSchemaOnce, isMissingTableError } from "@/db/ensure";
 
 export type UUID = string;
 
+/**
+ * Development fallback; runtime schema setup should be explicit.
+ * In production, missing schema objects throw immediately.
+ */
 export async function withSchemaRetry<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
     if (!isMissingTableError(error)) {
+      throw error;
+    }
+    const allowAutoEnsureSchema =
+      process.env.NODE_ENV !== "production" ||
+      process.env.AUTO_ENSURE_SCHEMA === "true";
+    if (!allowAutoEnsureSchema) {
       throw error;
     }
     await ensureSchemaOnce();
@@ -35,17 +45,17 @@ const PHASE_MANAGEMENT_GUIDANCE = [
   "You are responsible for managing workflow phases. Use start_phase and end_phase to track structured stages of work.",
   "",
   "### Phase types",
-  "- prd_parse          — Parsing PRD / requirements document",
-  "- independent_review  — Agents independently review before cross-review",
-  "- full_mesh_round_1   — First full-mesh cross-review round",
-  "- full_mesh_round_2   — Second full-mesh cross-review round",
-  "- full_mesh_round_3   — Third full-mesh cross-review round",
-  "- conflict_resolution — Resolving conflicts found in reviews",
-  "- draft_plan         — Drafting the implementation plan",
-  "- human_gate         — Waiting for human approval before execution",
-  "- execution          — Executing the implementation plan",
-  "- testing            — Running tests and validation",
-  "- summary            — Final summary / wrap-up",
+  "- prd_parse          -Parsing PRD / requirements document",
+  "- independent_review  -Agents independently review before cross-review",
+  "- full_mesh_round_1   -First full-mesh cross-review round",
+  "- full_mesh_round_2   -Second full-mesh cross-review round",
+  "- full_mesh_round_3   -Third full-mesh cross-review round",
+  "- conflict_resolution -Resolving conflicts found in reviews",
+  "- draft_plan         -Drafting the implementation plan",
+  "- human_gate         -Waiting for human approval before execution",
+  "- execution          -Executing the implementation plan",
+  "- testing            -Running tests and validation",
+  "- summary            -Final summary / wrap-up",
   "",
   "### Rules",
   "1. Only one active phase per group at a time. start_phase will reject if one is already active.",
@@ -57,7 +67,7 @@ const PHASE_MANAGEMENT_GUIDANCE = [
   "7. Before waiting for human confirmation, start human_gate.",
   "8. Before executing tasks, start execution.",
   "9. Before running tests, start testing.",
-  "10. Do not leave active phases hanging — always close them when the stage completes.",
+  "10. Do not leave active phases hanging -always close them when the stage completes.",
   "11. end_phase parameters: summary (required), decisions (number), conflicts (number), openQuestions (number).",
 ].join("\n");
 
@@ -96,24 +106,3 @@ export function initialAgentHistory(input: {
   return JSON.stringify(history);
 }
 
-export async function emitDbWrite(input: {
-  workspaceId: UUID;
-  table: string;
-  action: "insert" | "update" | "delete";
-  recordId?: UUID | null;
-}) {
-  try {
-    const { getWorkspaceUIBus } = await import("@/runtime/ui-bus");
-    getWorkspaceUIBus().emit(input.workspaceId, {
-      event: "ui.db.write",
-      data: {
-        workspaceId: input.workspaceId,
-        table: input.table,
-        action: input.action,
-        recordId: input.recordId ?? null,
-      },
-    });
-  } catch {
-    // best-effort only
-  }
-}

@@ -1,6 +1,6 @@
 export const runtime = "nodejs";
 
-import { store } from "@/lib/storage";
+import { getAgent, deleteAgent } from "@/services/agent-service";
 
 export async function GET(
   _req: Request,
@@ -12,7 +12,7 @@ export async function GET(
     return Response.json({ error: "Missing agentId" }, { status: 400 });
   }
 
-  const agent = await store.getAgent({ agentId: trimmedAgentId });
+  const agent = await getAgent({ agentId: trimmedAgentId });
   return Response.json({
     agentId: agent.id,
     role: agent.role,
@@ -37,7 +37,7 @@ export async function DELETE(
   }
 
   try {
-    await store.deleteAgent({ agentId: trimmedAgentId, workspaceId });
+    await deleteAgent({ agentId: trimmedAgentId, workspaceId });
     return Response.json({ ok: true });
   } catch (e) {
     return Response.json(

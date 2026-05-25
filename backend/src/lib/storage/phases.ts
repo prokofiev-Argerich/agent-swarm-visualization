@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { groups, phaseSummaries, workflowPhases } from "@/db/schema";
-import { emitDbWrite, now, uuid, withSchemaRetry, type UUID } from "./shared";
+import { now, uuid, withSchemaRetry, type UUID } from "./shared";
 
 export async function createWorkflowPhase(input: {
   groupId: UUID;
@@ -29,13 +29,6 @@ export async function createWorkflowPhase(input: {
       status: "active",
       startedAt,
       metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-    });
-
-    await emitDbWrite({
-      workspaceId: g[0]!.workspaceId,
-      table: "workflow_phases",
-      action: "insert",
-      recordId: id,
     });
 
     return { id, startedAt: startedAt.toISOString() };
@@ -94,15 +87,6 @@ export async function endWorkflowPhase(input: {
       .from(workflowPhases)
       .where(eq(workflowPhases.id, input.phaseId))
       .limit(1);
-
-    if (rows.length > 0) {
-      await emitDbWrite({
-        workspaceId: rows[0]!.workspaceId,
-        table: "workflow_phases",
-        action: "update",
-        recordId: input.phaseId,
-      });
-    }
 
     return { endedAt: endedAt.toISOString() };
   });
@@ -175,13 +159,6 @@ export async function createPhaseSummary(input: {
       createdByAgentId: input.createdByAgentId,
       createdAt,
       metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-    });
-
-    await emitDbWrite({
-      workspaceId: gr[0]!.workspaceId,
-      table: "phase_summaries",
-      action: "insert",
-      recordId: id,
     });
 
     return { id, createdAt: createdAt.toISOString() };

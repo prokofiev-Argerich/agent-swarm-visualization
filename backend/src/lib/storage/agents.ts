@@ -1,9 +1,7 @@
 import { and, desc, eq, gt, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { agents, groups, groupMembers, messages } from "@/db/schema";
-import { emitDbWrite, initialAgentHistory, now, uuid, type UUID } from "./shared";
-import { ensureWorkspaceDefaults } from "./workspaces";
-
+import { initialAgentHistory, now, uuid, type UUID } from "./shared";
 export async function createAgent(input: {
   workspaceId: UUID;
   role: string;
@@ -38,13 +36,6 @@ export async function createAgent(input: {
     createdAt,
   });
 
-  await emitDbWrite({
-    workspaceId: input.workspaceId,
-    table: "agents",
-    action: "insert",
-    recordId: agentId,
-  });
-
   return { id: agentId, role: input.role, createdAt: createdAt.toISOString() };
 }
 
@@ -69,111 +60,6 @@ export async function listAgentsMeta(
 export async function getDefaultHumanAgentId(input: { workspaceId: UUID }): Promise<UUID | null> {
   const meta = await listAgentsMeta({ workspaceId: input.workspaceId });
   return meta.find((a) => a.role === "human")?.id ?? null;
-}
-
-export async function createSubAgentWithP2P(input: {
-  workspaceId: UUID;
-  creatorId: UUID;
-  role: string;
-  guidance?: string;
-  collaborationGroupId?: UUID;
-}) {
-  const db = getDb();
-  const createdAt = now();
-  const agentId = uuid();
-  const p2pGroupId = uuid();
-
-  const defaults = await ensureWorkspaceDefaults({ workspaceId: input.workspaceId });
-  const humanAgentId = defaults.humanAgentId;
-
-  const workspace = await db
-    .select({ id: groups.id })
-    .from(groups)
-    .where(eq(groups.workspaceId, input.workspaceId))
-    .limit(1);
-  if (workspace.length === 0) throw new Error("workspace not found");
-
-  await db.transaction(async (tx) => {
-    await tx.insert(agents).values({
-      id: agentId,
-      workspaceId: input.workspaceId,
-      role: input.role,
-      parentId: input.creatorId,
-      llmHistory: initialAgentHistory({
-        agentId,
-        workspaceId: input.workspaceId,
-        role: input.role,
-        guidance: input.guidance,
-      }),
-      createdAt,
-    });
-
-    await tx.insert(groups).values({
-      id: p2pGroupId,
-      workspaceId: input.workspaceId,
-      name: input.role,
-      createdAt,
-    });
-
-    await tx.insert(groupMembers).values([
-      {
-        groupId: p2pGroupId,
-        userId: humanAgentId,
-        lastReadMessageId: null,
-        joinedAt: createdAt,
-      },
-      {
-        groupId: p2pGroupId,
-        userId: agentId,
-        lastReadMessageId: null,
-        joinedAt: createdAt,
-      },
-    ]);
-
-    // If collaborationGroupId is provided, add new agent to that group
-    if (input.collaborationGroupId) {
-      const collabGroup = await tx
-        .select({ id: groups.id, workspaceId: groups.workspaceId })
-        .from(groups)
-        .where(eq(groups.id, input.collaborationGroupId))
-        .limit(1);
-
-      if (collabGroup.length > 0 && collabGroup[0]!.workspaceId === input.workspaceId) {
-        await tx.insert(groupMembers).values({
-          groupId: input.collaborationGroupId,
-          userId: agentId,
-          lastReadMessageId: null,
-          joinedAt: createdAt,
-        }).onConflictDoNothing();
-      }
-    }
-  });
-
-  await emitDbWrite({
-    workspaceId: input.workspaceId,
-    table: "agents",
-    action: "insert",
-    recordId: agentId,
-  });
-  await emitDbWrite({
-    workspaceId: input.workspaceId,
-    table: "groups",
-    action: "insert",
-    recordId: p2pGroupId,
-  });
-  await emitDbWrite({
-    workspaceId: input.workspaceId,
-    table: "group_members",
-    action: "insert",
-    recordId: p2pGroupId,
-  });
-
-  return {
-    agentId,
-    groupId: p2pGroupId,
-    collaborationGroupId: input.collaborationGroupId ?? null,
-    createdAt: createdAt.toISOString(),
-  };
 }
 
 export async function listAgents(
@@ -224,12 +110,6 @@ export async function setAgentHistory(input: { agentId: UUID; llmHistory: string
         .limit(1)
     )[0]?.workspaceId;
   if (workspaceId) {
-    await emitDbWrite({
-      workspaceId,
-      table: "agents",
-      action: "update",
-      recordId: input.agentId,
-    });
   }
 }
 
@@ -304,50 +184,4 @@ export async function deleteAgent(input: { agentId: UUID; workspaceId: UUID }) {
     await tx.delete(groupMembers).where(eq(groupMembers.userId, input.agentId));
     await tx.delete(agents).where(eq(agents.id, input.agentId));
   });
-
-  await emitDbWrite({
-    workspaceId: input.workspaceId,
-    table: "agents",
-    action: "delete",
-    recordId: input.agentId,
-  });
-}
-
-export async function repairWorkspaceAgentMemberships(input: {
-  workspaceId: UUID;
-  targetGroupId: UUID;
-}) {
-  const db = getDb();
-  const joinedAt = now();
-
-  const allAgents = await db
-    .select({ id: agents.id })
-    .from(agents)
-    .where(and(eq(agents.workspaceId, input.workspaceId), ne(agents.role, "human")));
-
-  const agentIds = allAgents.map((a) => a.id);
-  if (agentIds.length === 0) return { added: 0, agents: [] as UUID[] };
-
-  const existingMembers = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, input.targetGroupId));
-  const existingSet = new Set(existingMembers.map((m) => m.userId));
-
-  const toAdd = agentIds.filter((id) => !existingSet.has(id));
-  if (toAdd.length === 0) return { added: 0, agents: [] as UUID[] };
-
-  await db
-    .insert(groupMembers)
-    .values(
-      toAdd.map((userId) => ({
-        groupId: input.targetGroupId,
-        userId,
-        lastReadMessageId: null,
-        joinedAt,
-      }))
-    )
-    .onConflictDoNothing();
-
-  return { added: toAdd.length, agents: toAdd };
 }

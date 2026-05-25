@@ -1,6 +1,6 @@
 export const runtime = "nodejs";
 
-import { store } from "@/lib/storage";
+import { deleteGroup } from "@/services/group-service";
 
 export async function DELETE(
   req: Request,
@@ -19,7 +19,7 @@ export async function DELETE(
   }
 
   try {
-    await store.deleteGroup({ groupId: trimmedGroupId, workspaceId });
+    await deleteGroup({ groupId: trimmedGroupId, workspaceId });
     return Response.json({ ok: true });
   } catch (e) {
     return Response.json(

@@ -1,4 +1,4 @@
-import { store } from "@/lib/storage";
+import { ensureWorkspaceDefaults } from "@/services/workspace-service";
 
 export async function getWorkspaceDefaultsResponse(workspaceId: string): Promise<Response> {
   const trimmed = workspaceId?.trim();
@@ -7,7 +7,7 @@ export async function getWorkspaceDefaultsResponse(workspaceId: string): Promise
   }
 
   try {
-    const result = await store.ensureWorkspaceDefaults({ workspaceId: trimmed });
+    const result = await ensureWorkspaceDefaults({ workspaceId: trimmed });
     return Response.json(result);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

@@ -1,7 +1,6 @@
 export const runtime = "nodejs";
 
-import { store } from "@/lib/storage";
-import { deleteWorkspaceUploads } from "@/lib/file-service";
+import { deleteWorkspace } from "@/services/workspace-service";
 
 export async function DELETE(
   _req: Request,
@@ -14,8 +13,7 @@ export async function DELETE(
   }
 
   try {
-    await store.deleteWorkspace({ workspaceId: trimmedWorkspaceId });
-    await deleteWorkspaceUploads(trimmedWorkspaceId);
+    await deleteWorkspace({ workspaceId: trimmedWorkspaceId });
     return Response.json({ ok: true });
   } catch (e) {
     return Response.json(

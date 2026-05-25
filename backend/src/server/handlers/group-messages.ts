@@ -1,6 +1,6 @@
-import { store } from "@/lib/storage";
+import { listGroupMessagesPaged, markGroupRead, sendGroupMessage } from "@/services/message-service";
+import { getActiveWorkflowPhase } from "@/services/workflow-service";
 import { getAgentRuntime } from "@/runtime/agent-runtime";
-import { getWorkspaceUIBus } from "@/runtime/ui-bus";
 
 export async function listGroupMessagesResponse(opts: {
   groupId: string;
@@ -16,7 +16,7 @@ export async function listGroupMessagesResponse(opts: {
   }
 
   try {
-    const result = await store.listGroupMessagesPaged({
+    const result = await listGroupMessagesPaged({
       groupId: trimmed,
       limit: opts.limit ?? 50,
       before: opts.before ?? undefined,
@@ -24,12 +24,11 @@ export async function listGroupMessagesResponse(opts: {
     });
 
     if (opts.markRead && opts.readerId) {
-      await store.markGroupRead({ groupId: trimmed, readerId: opts.readerId });
+      await markGroupRead({ groupId: trimmed, readerId: opts.readerId });
     }
 
     return Response.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[listGroupMessages] 500", { groupId: trimmed, error: String(err) });
     throw err;
   }
@@ -48,26 +47,14 @@ export async function sendGroupMessageResponse(opts: {
   }
 
   // auto-bind active phase
-  const activePhase = await store.getActiveWorkflowPhase({ groupId: trimmed });
+  const activePhase = await getActiveWorkflowPhase({ groupId: trimmed });
 
-  const result = await store.sendMessage({
+  const result = await sendGroupMessage({
     groupId: trimmed,
     senderId: opts.body.senderId,
     content: opts.body.content,
     contentType: opts.body.contentType ?? "text",
     phaseId: activePhase?.id,
-  });
-
-  const memberIds = await store.listGroupMemberIds({ groupId: trimmed });
-  const workspaceId = await store.getGroupWorkspaceId({ groupId: trimmed });
-  getWorkspaceUIBus().emit(workspaceId, {
-    event: "ui.message.created",
-    data: {
-      workspaceId,
-      groupId: trimmed,
-      memberIds,
-      message: { id: result.id, senderId: opts.body.senderId, sendTime: result.sendTime },
-    },
   });
 
   const runtime = getAgentRuntime();

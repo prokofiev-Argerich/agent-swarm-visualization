@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
-import { store } from "@/lib/storage";
+import { listAgentsMeta, listAgents, createSubAgentWithP2P } from "@/services/agent-service";
+import { ensureWorkspaceDefaults } from "@/services/workspace-service";
 import { getAgentRuntime } from "@/runtime/agent-runtime";
-import { getWorkspaceUIBus } from "@/runtime/ui-bus";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -14,11 +14,11 @@ export async function GET(req: Request) {
   }
 
   if (meta) {
-    const agents = await store.listAgentsMeta({ workspaceId });
+    const agents = await listAgentsMeta({ workspaceId });
     return Response.json({ agents });
   }
 
-  const agents = await store.listAgents({ workspaceId });
+  const agents = await listAgents({ workspaceId });
   return Response.json({ agents });
 }
 
@@ -48,34 +48,17 @@ export async function POST(req: Request) {
 
   const runtime = getAgentRuntime();
   await runtime.bootstrap();
-  const { humanAgentId } = await store.ensureWorkspaceDefaults({ workspaceId });
+  await ensureWorkspaceDefaults({ workspaceId });
 
   const collaborationGroupId = body?.groupId?.trim() || undefined;
 
-  const created = await store.createSubAgentWithP2P({
+  const created = await createSubAgentWithP2P({
     workspaceId,
     creatorId,
     role,
     collaborationGroupId,
   });
   runtime.ensureRunner(created.agentId);
-  getWorkspaceUIBus().emit(workspaceId, {
-    event: "ui.agent.created",
-    data: { workspaceId, agent: { id: created.agentId, role, parentId: creatorId } },
-  });
-  getWorkspaceUIBus().emit(workspaceId, {
-    event: "ui.group.created",
-    data: {
-      workspaceId,
-      group: { id: created.groupId, name: role, memberIds: [humanAgentId, created.agentId] },
-    },
-  });
-  if (created.collaborationGroupId) {
-    getWorkspaceUIBus().emit(workspaceId, {
-      event: "ui.group.updated",
-      data: { workspaceId, groupId: created.collaborationGroupId, addedMembers: [created.agentId] },
-    });
-  }
 
   return Response.json(
     {

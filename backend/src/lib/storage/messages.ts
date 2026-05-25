@@ -1,13 +1,7 @@
 import { and, desc, eq, gt, ilike, inArray, lt, ne, sql as dsql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { groups, groupMembers, messages } from "@/db/schema";
-import { emitDbWrite, now, uuid, withSchemaRetry, type UUID } from "./shared";
-import {
-  createGroup,
-  findLatestExactGroupId,
-  findLatestExactP2PGroupId,
-  mergeDuplicateExactP2PGroups,
-} from "./groups";
+import { now, uuid, withSchemaRetry, type UUID } from "./shared";
 
 const MSG_SELECT = {
   id: messages.id,
@@ -19,7 +13,7 @@ const MSG_SELECT = {
   causedBy: messages.causedBy,
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function toMsg(row: any) {
   return {
     id: row.id as string,
@@ -123,106 +117,8 @@ export async function sendMessage(input: {
       causedBy: input.causedBy ?? null,
     });
 
-    await emitDbWrite({
-      workspaceId: group[0]!.workspaceId,
-      table: "messages",
-      action: "insert",
-      recordId: messageId,
-    });
-
     return { id: messageId, sendTime: sendTime.toISOString() };
   });
-}
-
-export async function sendDirectMessage(input: {
-  workspaceId: UUID;
-  fromId: UUID;
-  toId: UUID;
-  observerHumanId?: UUID | null;
-  content: string;
-  contentType?: string;
-  groupName?: string | null;
-  newThread?: boolean;
-  causedBy?: UUID;
-}) {
-  const memberIds = [
-    input.fromId,
-    input.toId,
-    input.observerHumanId && input.observerHumanId !== input.fromId && input.observerHumanId !== input.toId
-      ? input.observerHumanId
-      : null,
-  ].filter(Boolean) as UUID[];
-
-  let groupId: UUID;
-  let channel: "new_thread" | "new_group" | "reuse_existing_group";
-  if (input.newThread === true) {
-    groupId = (
-      await createGroup({
-        workspaceId: input.workspaceId,
-        memberIds,
-        name: input.groupName ?? undefined,
-      })
-    ).id;
-    channel = "new_thread";
-  } else if (memberIds.length === 2) {
-    const existing = await findLatestExactP2PGroupId({
-      workspaceId: input.workspaceId,
-      memberA: memberIds[0]!,
-      memberB: memberIds[1]!,
-      preferredName: input.groupName ?? null,
-    });
-    // eslint-disable-next-line no-console
-    console.log("[sendDirectMessage:P2P]", {
-      memberA: memberIds[0]!.slice(0, 8),
-      memberB: memberIds[1]!.slice(0, 8),
-      existing: existing?.slice(0, 8) ?? null,
-    });
-    groupId =
-      (await mergeDuplicateExactP2PGroups({
-        workspaceId: input.workspaceId,
-        memberA: memberIds[0]!,
-        memberB: memberIds[1]!,
-        preferredName: input.groupName ?? null,
-      })) ??
-      (
-        await createGroup({
-          workspaceId: input.workspaceId,
-          memberIds,
-          name: input.groupName ?? undefined,
-        })
-      ).id;
-    channel = existing ? "reuse_existing_group" : "new_group";
-    // eslint-disable-next-line no-console
-    console.log("[sendDirectMessage:P2P] result", {
-      groupId: groupId.slice(0, 8),
-      channel,
-    });
-  } else {
-    const existing = await findLatestExactGroupId({
-      workspaceId: input.workspaceId,
-      memberIds,
-    });
-    groupId =
-      existing ??
-      (
-        await createGroup({
-          workspaceId: input.workspaceId,
-          memberIds,
-          name: input.groupName ?? undefined,
-        })
-      ).id;
-    channel = existing ? "reuse_existing_group" : "new_group";
-  }
-
-  const message = await sendMessage({
-    groupId,
-    senderId: input.fromId,
-    content: input.content,
-    contentType: input.contentType ?? "text",
-    causedBy: input.causedBy,
-  });
-
-  return { groupId, messageId: message.id, sendTime: message.sendTime, channel };
 }
 
 export async function markGroupRead(input: { groupId: UUID; readerId: UUID }) {
@@ -238,23 +134,10 @@ export async function markGroupRead(input: { groupId: UUID; readerId: UUID }) {
     .update(groupMembers)
     .set({ lastReadMessageId: last[0]?.id ?? null })
     .where(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       dsql`${groupMembers.groupId} = ${input.groupId} and ${groupMembers.userId} = ${input.readerId}`
     );
 
-  const group = await db
-    .select({ workspaceId: groups.workspaceId })
-    .from(groups)
-    .where(eq(groups.id, input.groupId))
-    .limit(1);
-  if (group.length > 0) {
-    await emitDbWrite({
-      workspaceId: group[0]!.workspaceId,
-      table: "group_members",
-      action: "update",
-      recordId: input.groupId,
-    });
-  }
 }
 
 export async function markGroupReadToMessage(input: {
@@ -267,23 +150,10 @@ export async function markGroupReadToMessage(input: {
     .update(groupMembers)
     .set({ lastReadMessageId: input.messageId })
     .where(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       dsql`${groupMembers.groupId} = ${input.groupId} and ${groupMembers.userId} = ${input.readerId}`
     );
 
-  const group = await db
-    .select({ workspaceId: groups.workspaceId })
-    .from(groups)
-    .where(eq(groups.id, input.groupId))
-    .limit(1);
-  if (group.length > 0) {
-    await emitDbWrite({
-      workspaceId: group[0]!.workspaceId,
-      table: "group_members",
-      action: "update",
-      recordId: input.groupId,
-    });
-  }
 }
 
 export async function listRecentWorkspaceMessages(input: {
