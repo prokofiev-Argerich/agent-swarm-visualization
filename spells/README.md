@@ -13,3 +13,7 @@
 2) 填写参数（depth/branch/task/role 等）
 3) 直接发给入口 agent
 
+## 注意
+这些文档是编排模式的概念说明，**不被 runtime 加载**。
+Runtime 可加载的 skill 文件位于 `backend/skills/` 或 `AGENT_SKILLS_DIR` 环境变量指定的目录。
+
